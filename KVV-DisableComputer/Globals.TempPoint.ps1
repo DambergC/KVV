@@ -27,6 +27,7 @@ function Get-ScriptDirectory
 		Split-Path $script:MyInvocation.MyCommand.Path
 	}
 }
+
 function Update-ListBox
 {
 <#
@@ -113,6 +114,8 @@ function Update-ListBox
 		$ListBox.ValueMember = $ValueMember
 	}
 }
+
+
 
 <#
 .Synopsis
@@ -1607,5 +1610,6 @@ A///AAIACw=='))
 
 #Sample variable that provides the location of the script
 [string]$ScriptDirectory = Get-ScriptDirectory
+
 
 
