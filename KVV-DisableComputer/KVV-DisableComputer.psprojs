@@ -3,8 +3,8 @@
   <FileID>42a9b5d0-4a70-4251-a18d-0da20b73f0ad</FileID>
   <OpenFolders />
   <OpenFiles>
-    <File>MainForm.psf</File>
-    <File>Startup.pss</File>
     <File>Globals.ps1</File>
+    <File>Startup.pss</File>
+    <File>MainForm.psf</File>
   </OpenFiles>
 </ProjectState>

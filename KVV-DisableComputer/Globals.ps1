@@ -284,10 +284,10 @@ function Choose-ADOrganizationalUnit
 		
 		If ($Type -eq 'Domain')
 		{
-			$ADObjects = $forest.domains | ?{ $_.Name -eq $RootNode.Text } |
-			select -ExpandProperty Children
+			$ADObjects = $forest.domains | Where-Object{ $_.Name -eq $RootNode.Text } |
+			Select-Object -ExpandProperty Children
 			$RootNode.Nodes.Clear()
-			$ADObjects | % {
+			$ADObjects | ForEach-Object {
 				$node = Add-Node -RootNode $RootNode -dname $_.GetDirectoryEntry().distinguishedName -name $_.name -Type $Type
 				Get-NextLevel -RootNode $node -Type $Type
 			}
@@ -322,7 +322,7 @@ function Choose-ADOrganizationalUnit
 			}
 			else
 			{
-				$ADObjects = $ADsearcher.FindAll() | ?{
+				$ADObjects = $ADsearcher.FindAll() | Where-Object{
 					$_.Properties['showinadvancedviewonly'][0] -eq $false -or
 					$_.Properties['showinadvancedviewonly'][0] -eq $null
 				}
@@ -331,8 +331,8 @@ function Choose-ADOrganizationalUnit
 			If ($ADObjects)
 			{
 				$RootNode.Nodes.Clear()
-				$ADObjects | % {
-					$Type = $_.properties.objectclass | ?{ $_ -ne 'top' }
+				$ADObjects | ForEach-Object {
+					$Type = $_.properties.objectclass | Where-Object{ $_ -ne 'top' }
 					If ($Credential)
 					{
 						$ADsearcher.SearchRoot = New-Object System.DirectoryServices.DirectoryEntry($_.Path, $Credential.UserName, $Credential.GetNetworkCredential().password)
@@ -367,7 +367,7 @@ function Choose-ADOrganizationalUnit
 		}
 		else
 		{
-			$CurrentDomain = $Forest.Domains | ?{ $_.Name -eq $env:USERDNSDOMAIN }
+			$CurrentDomain = $Forest.Domains | Where-Object{ $_.Name -eq $env:USERDNSDOMAIN }
 			$Domain = $CurrentDomain.GetDirectoryEntry()
 			$RootDomainNode = Add-Node -dname $Domain.distinguishedName `
 									   -name $CurrentDomain.Name -RootNode $treeNodes -Type Domain
@@ -764,7 +764,7 @@ Password"
 	
 	$FormEvent_Load = {
 		
-		If ((gwmi win32_computersystem).partofdomain)
+		If ((Get-CimInstance -ClassName win32_computersystem).partofdomain)
 		{
 			$forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
 			#Validate Domain variable if present
@@ -943,7 +943,7 @@ Password"
 						return
 					}
 				}
-				$DomainDN = ($NewNode.Name.Split(',') | ?{ $_ -like 'DC=*' }) -Join ','
+				$DomainDN = ($NewNode.Name.Split(',') | Where-Object{ $_ -like 'DC=*' }) -Join ','
 				$objParent = New-Object System.DirectoryServices.DirectoryEntry "LDAP://$($NewNode.Parent.Name)", $($ADWriteCred.UserName), $($ADWriteCred.GetNetworkCredential().password)
 				$objOU = $objParent.Create("organizationalUnit", "ou=$Label")
 				
@@ -1095,7 +1095,7 @@ Password"
 				return
 			}
 			$ContextMenu.Items.Clear()
-			if ($_.Node.ImageIndex -lt 3 -and (gwmi win32_computersystem).partofdomain)
+			if ($_.Node.ImageIndex -lt 3 -and (Get-CimInstance -ClassName win32_computersystem).partofdomain)
 			{
 				$ContextMenu.Items.Add($changeDomainToolStripMenuItem)
 			}
@@ -1135,7 +1135,7 @@ Password"
 		else
 		{
 			$DN = $_.Node.Name
-			$SelectedObject | %{
+			$SelectedObject | ForEach-Object{
 				If ($_.DistinguishedName -eq $DN)
 				{
 					$Remove = $_
