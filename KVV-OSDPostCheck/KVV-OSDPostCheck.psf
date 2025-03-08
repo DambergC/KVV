@@ -368,8 +368,7 @@ vcj1TuGco7N5X4jReSM+s5M9P+agI/6KefKTsHniIkNrfng769VC2BvFlLwdwKLblUszFt2VUXci
 GyZ/ifnf+/1vGP31fjJG/fYL/k8uQv+TzIhitUuz49ff/x2f/pJH/5gq8F+C/e+HnluXpe/+r0c9
 /mMZHijO7D8X9P8+Xjjxj1e9/2cB+7sl/3PxIv6tAPz/4fp3suEv4fp/onb4f/9dh95z5lbzGjWv
 5WwyLkpqvm/66dffnWn9p/Z/jxI8iEn93x3Bf/njpf8BGf4+W/7un7/9Of/+/wFFLg37tTAAAA==</Form>
-  <Code><![CDATA[
-$formKriminalvårdenOSDPos_Load = {
+  <Code><![CDATA[$formKriminalvårdenOSDPos_Load = {
 	$isCompliant = $true
 	
 	function Check-TPM
@@ -386,7 +385,7 @@ $formKriminalvårdenOSDPos_Load = {
 			$richTextBox1.SelectionColor = [System.Drawing.Color]::Red
 			$richTextBox1.SelectionFont = New-Object System.Drawing.Font($richTextBox1.Font, [System.Drawing.FontStyle]::Bold)
 			$richTextBox1.AppendText("TPM is not enabled.`n")
-			$isCompliant = $false
+			$global:isCompliant = $false
 		}
 	}
 	
@@ -416,7 +415,7 @@ $formKriminalvårdenOSDPos_Load = {
 			$richTextBox1.SelectionColor = [System.Drawing.Color]::Red
 			$richTextBox1.SelectionFont = New-Object System.Drawing.Font($richTextBox1.Font, [System.Drawing.FontStyle]::Bold)
 			$richTextBox1.AppendText("Computer certificate does not exist.`n")
-			$isCompliant = $false
+			$global:isCompliant = $false
 		}
 	}
 	
@@ -434,7 +433,7 @@ $formKriminalvårdenOSDPos_Load = {
 			$richTextBox1.SelectionColor = [System.Drawing.Color]::Red
 			$richTextBox1.SelectionFont = New-Object System.Drawing.Font($richTextBox1.Font, [System.Drawing.FontStyle]::Bold)
 			$richTextBox1.AppendText("UEFI Secure Boot is not enabled.`n")
-			$isCompliant = $false
+			$global:isCompliant = $false
 		}
 	}
 	
@@ -456,11 +455,12 @@ $formKriminalvårdenOSDPos_Load = {
 			$richTextBox1.SelectionColor = [System.Drawing.Color]::Red
 			$richTextBox1.SelectionFont = New-Object System.Drawing.Font($richTextBox1.Font, [System.Drawing.FontStyle]::Bold)
 			$richTextBox1.AppendText("$appName is not installed.`n")
-			$isCompliant = $false
+			$global:isCompliant = $false
 		}
 	}
 	
 	# Run the functions and update RichTextBox
+	
 	Check-TPM
 	Check-Certificate
 	Check-SecureBoot
@@ -469,23 +469,20 @@ $formKriminalvårdenOSDPos_Load = {
 	Check-Application -appName "Office"
 	
 	# Check compliance status
-	if (-not $isCompliant)
+	if ($global:isCompliant -eq $false)
 	{
 		$richTextBox1.SelectionColor = [System.Drawing.Color]::Red
 		$richTextBox1.SelectionFont = New-Object System.Drawing.Font($richTextBox1.Font, [System.Drawing.FontStyle]::Bold)
+		$richTextBox1.SelectionFont = New-Object System.Drawing.Font($richTextBox1.Font.FontFamily, 20)
 		$richTextBox1.AppendText("System is not compliant.`n")
 	}
-	
 	else
 	{
 		$richTextBox1.SelectionColor = [System.Drawing.Color]::Green
 		$richTextBox1.SelectionFont = New-Object System.Drawing.Font($richTextBox1.Font, [System.Drawing.FontStyle]::Bold)
 		$richTextBox1.AppendText("System is compliant.`n")
 	}
-	
-	
 }
-
 
 $buttonClose_Click={
 	#TODO: Place custom script here
