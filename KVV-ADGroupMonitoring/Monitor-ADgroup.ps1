@@ -1,5 +1,5 @@
 ﻿param (
-    [string]$GroupName,
+    [string[]]$GroupNames,
     [switch]$Test
 )
 
@@ -25,8 +25,7 @@ $ScriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
 # Define folder paths
 $InventoryFolder = Join-Path -Path $ScriptDir -ChildPath "MonitorADgroupInventory"
 $ChangeHistoryFolder = Join-Path -Path $ScriptDir -ChildPath "MonitorADgroupChange"
-$HtmlReportPath = Join-Path -Path $ScriptDir -ChildPath "MonitorADgroupReports\$GroupName.html"
-$HtmlEmailPath = Join-Path -Path $ScriptDir -ChildPath "MonitorADgroupReports\$GroupName-email.html"
+$ReportsFolder = Join-Path -Path $ScriptDir -ChildPath "MonitorADgroupReports"
 
 # Create folders if they don't exist
 if (-not (Test-Path $InventoryFolder)) {
@@ -37,12 +36,15 @@ if (-not (Test-Path $ChangeHistoryFolder)) {
     New-Item -Path $ChangeHistoryFolder -ItemType Directory
 }
 
-if (-not (Test-Path (Split-Path $HtmlReportPath))) {
-    New-Item -Path (Split-Path $HtmlReportPath) -ItemType Directory
+if (-not (Test-Path $ReportsFolder)) {
+    New-Item -Path $ReportsFolder -ItemType Directory
 }
 
 # Function to get current group members
 function Get-CurrentGroupMembers {
+    param (
+        [string]$GroupName
+    )
     $GroupMembers = Get-ADGroupMember -Identity $GroupName
     $GroupMembers | ForEach-Object {
         $User = Get-ADUser -Identity $_.SamAccountName -Properties DisplayName, DistinguishedName
@@ -61,6 +63,18 @@ function Save-GroupMembersToCsv {
         [array]$Members,
         [switch]$Append
     )
+
+    if (-not $Members) {
+        Write-Host "No members to export. Creating an empty CSV file."
+        $Placeholder = [PSCustomObject]@{
+            DisplayName       = ""
+            SamAccountName    = ""
+            DistinguishedName = ""
+        }
+        $Placeholder | Export-Csv -Path $FilePath -NoTypeInformation
+        return
+    }
+
     if ($Append) {
         $Members | Export-Csv -Path $FilePath -NoTypeInformation -Append
     } else {
@@ -129,31 +143,49 @@ function Send-MailKitMessage {
 
 # Function to compare current members with previous CSV
 function Compare-GroupMembers {
+    param (
+        [string]$GroupName
+    )
     $CsvFilePath = Join-Path -Path $InventoryFolder -ChildPath "$GroupName.csv"
-    $CurrentMembers = Get-CurrentGroupMembers
+    $CurrentMembers = Get-CurrentGroupMembers -GroupName $GroupName
+
+    if (-not $CurrentMembers) {
+        Write-Host "No current members found for group $GroupName. Creating an empty CSV file."
+        Save-GroupMembersToCsv -FilePath $CsvFilePath -Members $null
+        return
+    }
 
     if (Test-Path $CsvFilePath) {
         $PreviousMembers = Import-Csv -Path $CsvFilePath
+
+        # Check if the previous CSV file is empty
+        if ($PreviousMembers.Count -eq 0) {
+            Write-Host "Previous CSV file is empty. No changes to report."
+            Save-GroupMembersToCsv -FilePath $CsvFilePath -Members $CurrentMembers
+            return
+        }
 
         $AddedMembers = Compare-Object -ReferenceObject $PreviousMembers -DifferenceObject $CurrentMembers -Property SamAccountName | Where-Object { $_.SideIndicator -eq "=>" }
         $RemovedMembers = Compare-Object -ReferenceObject $PreviousMembers -DifferenceObject $CurrentMembers -Property SamAccountName | Where-Object { $_.SideIndicator -eq "<=" }
 
         if ($AddedMembers -or $RemovedMembers) {
-            Write-Host "Changes detected in group members."
+            Write-Host "Changes detected in group members for $GroupName."
 
             $Changes = @()
 
             if ($AddedMembers) {
                 Write-Host "Members added:"
                 $AddedMembers | ForEach-Object {
-                    $User = Get-ADUser -Identity $_.SamAccountName -Properties DisplayName, DistinguishedName
-                    Write-Host "$($_.SamAccountName) added"
-                    $Changes += [PSCustomObject]@{
-                        DateTime         = Get-Date
-                        State            = "Added"
-                        DisplayName      = $User.DisplayName
-                        SamAccountName   = $_.SamAccountName
-                        DistinguishedName = $User.DistinguishedName
+                    if ($_.SamAccountName) {
+                        $User = Get-ADUser -Identity $_.SamAccountName -Properties DisplayName, DistinguishedName
+                        Write-Host "$($_.SamAccountName) added"
+                        $Changes += [PSCustomObject]@{
+                            DateTime         = Get-Date
+                            State            = "Added"
+                            DisplayName      = $User.DisplayName
+                            SamAccountName   = $_.SamAccountName
+                            DistinguishedName = $User.DistinguishedName
+                        }
                     }
                 }
             }
@@ -161,14 +193,16 @@ function Compare-GroupMembers {
             if ($RemovedMembers) {
                 Write-Host "Members removed:"
                 $RemovedMembers | ForEach-Object {
-                    $User = Get-ADUser -Identity $_.SamAccountName -Properties DisplayName, DistinguishedName
-                    Write-Host "$($_.SamAccountName) removed"
-                    $Changes += [PSCustomObject]@{
-                        DateTime         = Get-Date
-                        State            = "Removed"
-                        DisplayName      = $User.DisplayName
-                        SamAccountName   = $_.SamAccountName
-                        DistinguishedName = $User.DistinguishedName
+                    if ($_.SamAccountName) {
+                        $User = Get-ADUser -Identity $_.SamAccountName -Properties DisplayName, DistinguishedName
+                        Write-Host "$($_.SamAccountName) removed"
+                        $Changes += [PSCustomObject]@{
+                            DateTime         = Get-Date
+                            State            = "Removed"
+                            DisplayName      = $User.DisplayName
+                            SamAccountName   = $_.SamAccountName
+                            DistinguishedName = $User.DistinguishedName
+                        }
                     }
                 }
             }
@@ -181,10 +215,12 @@ function Compare-GroupMembers {
             $HistoryChanges = Import-Csv -Path $ChangeHistoryFilePath | Select-Object -Last 10 | Sort-Object DateTime -Descending
 
             # Generate HTML report
+            $HtmlReportPath = Join-Path -Path $ReportsFolder -ChildPath "$GroupName.html"
             Generate-HTMLReport -Changes $Changes -FilePath $HtmlReportPath -History $HistoryChanges
 
             # Generate HTML email file if Test parameter is specified
             if ($Test) {
+                $HtmlEmailPath = Join-Path -Path $ReportsFolder -ChildPath "$GroupName-email.html"
                 Copy-Item -Path $HtmlReportPath -Destination $HtmlEmailPath
                 Write-Host "HTML email file generated at $HtmlEmailPath"
             } else {
@@ -192,16 +228,18 @@ function Compare-GroupMembers {
                 Send-MailKitMessage -HtmlFilePath $HtmlReportPath -To "recipient@example.com" -From "sender@example.com" -Subject "AD Group Changes Report for $GroupName" -SmtpServer "smtp.example.com" -SmtpPort 587 -SmtpUser "smtpuser" -SmtpPassword "smtppassword"
             }
         } else {
-            Write-Host "No changes detected in group members."
+            Write-Host "No changes detected in group members for $GroupName."
         }
 
         # Overwrite the inventory CSV with the current group members
         Save-GroupMembersToCsv -FilePath $CsvFilePath -Members $CurrentMembers
     } else {
-        Write-Host "Inventory CSV file not found. Saving current members to CSV."
+        Write-Host "Inventory CSV file not found for $GroupName. Saving current members to CSV."
         Save-GroupMembersToCsv -FilePath $CsvFilePath -Members $CurrentMembers
     }
 }
 
-# Run the comparison
-Compare-GroupMembers
+# Main logic to check multiple groups
+foreach ($GroupName in $GroupNames) {
+    Compare-GroupMembers -GroupName $GroupName
+}
