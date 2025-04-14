@@ -145,9 +145,9 @@ Check-Application -AppName "MDOP MBAM"
 Check-Application -AppName "Office"
 
 if (-not $global:IsCompliant) {
-    Update-RichTextBox -RichTextBox $RichTextBox1 -Message "System is not compliant." -Color [System.Drawing.Color]::Red -FontStyle [System.Drawing.FontStyle]::Bold
+    Update-RichTextBox -RichTextBox $RichTextBox1 -Message "System is not compliant." -Color ([System.Drawing.Color]::Red) -FontStyle [System.Drawing.FontStyle]::Bold
     Update-Registry
 } else {
-    Update-RichTextBox -RichTextBox $RichTextBox1 -Message "System is compliant." -Color [System.Drawing.Color]::Green -FontStyle [System.Drawing.FontStyle]::Bold
+    Update-RichTextBox -RichTextBox $RichTextBox1 -Message "System is compliant." -Color ([System.Drawing.Color]::Green) -FontStyle [System.Drawing.FontStyle]::Bold
     Write-Log "System is compliant."
 }
