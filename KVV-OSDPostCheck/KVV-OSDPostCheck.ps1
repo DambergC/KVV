@@ -115,7 +115,7 @@ function Check-Application {
             $global:IsCompliant = $false
         }
     } catch {
-        Write-Log "Error checking application $AppName: $_"
+        Write-Log "Error checking application ${AppName}: $_"
     }
 }
 
