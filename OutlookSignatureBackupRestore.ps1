@@ -1,3 +1,41 @@
+<#
+.SYNOPSIS
+    Script to back up and restore Outlook signatures for the currently logged-on user.
+
+.DESCRIPTION
+    This script handles the backup and restoration of Outlook signature files. It ensures that the backup directory exists
+    and provides options for a dry run mode to preview actions without making changes.
+
+.AUTHOR
+    Christian Damberg
+
+.CREATED
+    2025-04-23
+
+.PARAMETER LocalPath
+    Specifies the local path where Outlook signatures are stored.
+    Default: "$($env:APPDATA)\Microsoft\Signatures"
+
+.PARAMETER BackupPath
+    Specifies the path where the backup of the Outlook signatures will be stored.
+    Default: "$($env:APPDATA)\Backup\Signatures"
+
+.PARAMETER DryRun
+    Switch to enable dry run mode, which simulates actions without making changes.
+
+.EXAMPLES
+    # Backup Outlook signatures to the default backup path
+    .\OutlookSignatureBackupRestore.ps1
+
+    # Restore Outlook signatures from a custom backup path
+    .\OutlookSignatureBackupRestore.ps1 -BackupPath "C:\CustomBackupPath"
+
+    # Run the script in dry run mode
+    .\OutlookSignatureBackupRestore.ps1 -DryRun
+#>
+
+
+
 # Parameters for flexibility
 param (
     [string]$LocalPath = "$($env:APPDATA)\Microsoft\Signatures",
