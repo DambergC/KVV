@@ -129,10 +129,15 @@ $TriggerLogoff = New-ScheduledTaskTrigger -AtLogOff
 $TriggerTime1 = New-ScheduledTaskTrigger -Daily -At "11:00AM"
 $TriggerTime2 = New-ScheduledTaskTrigger -Daily -At "3:00PM"
 
-# Register the task for the current user
-try {
-    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $TriggerLogon, $TriggerLogoff, $TriggerTime1, $TriggerTime2 -User $env:USERNAME
-    Write-Host "Scheduled Task '$TaskName' created successfully for user: $env:USERNAME."
-} catch {
-    Write-Error "Failed to create Scheduled Task: $_"
+# Check if the scheduled task already exists
+if (-Not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
+    try {
+        # Register the task for the current user
+        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $TriggerLogon, $TriggerLogoff, $TriggerTime1, $TriggerTime2 -User $env:USERNAME
+        Write-Host "Scheduled Task '$TaskName' created successfully for user: $env:USERNAME."
+    } catch {
+        Write-Error "Failed to create Scheduled Task: $_"
+    }
+} else {
+    Write-Host "Scheduled Task '$TaskName' already exists. Skipping creation."
 }
