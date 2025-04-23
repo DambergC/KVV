@@ -63,8 +63,11 @@ if (Test-Path -Path $LocalPath) {
     if (Test-Path -Path $BackupPath) {
         # Compare files and decide whether to backup or restore
         $localFiles = Get-ChildItem -Path $LocalPath -Recurse
+        $backupFiles = Get-ChildItem -Path $BackupPath -Recurse
+
+        # Process files in the local directory
         foreach ($file in $localFiles) {
-            $relativePath = $file.FullName.Substring($LocalPath.Length).TrimStart('\')  # Ensure no leading backslash
+            $relativePath = $file.FullName.Substring($LocalPath.Length).TrimStart('\')
             $backupFile = Join-Path -Path $BackupPath -ChildPath $relativePath
 
             if (Test-Path -Path $backupFile) {
@@ -90,6 +93,21 @@ if (Test-Path -Path $LocalPath) {
                     Log-Message "Backed up $file.FullName"
                 } catch {
                     Write-Error "Failed to back up $file.FullName: $_"
+                }
+            }
+        }
+
+        # Process files in the backup directory that are missing locally
+        foreach ($backupFile in $backupFiles) {
+            $relativePath = $backupFile.FullName.Substring($BackupPath.Length).TrimStart('\')
+            $localFile = Join-Path -Path $LocalPath -ChildPath $relativePath
+
+            if (-not (Test-Path -Path $localFile)) {
+                try {
+                    Copy-Item -Path $backupFile.FullName -Destination $localFile -Force
+                    Log-Message "Restored missing file $localFile from backup"
+                } catch {
+                    Write-Error "Failed to restore missing file $localFile from backup: $_"
                 }
             }
         }
