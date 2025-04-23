@@ -57,7 +57,6 @@ function Get-RelativePath {
     return $relativeUri.ToString().Replace('/', '\')
 }
 
-# Function to compare file timestamps
 function Compare-Timestamps {
     param (
         [string]$localFile,
@@ -75,11 +74,10 @@ function Compare-Timestamps {
             return "Same"
         }
     } catch {
-        Log-Message "Error comparing timestamps for $localFile and $backupFile: $_" -Level "Error"
+        Log-Message "Error comparing timestamps for ${localFile} and ${backupFile}: $_" -Level "Error"
     }
 }
 
-# Utility function to handle file copy operations
 function Perform-Copy {
     param (
         [string]$SourcePath,
@@ -89,12 +87,12 @@ function Perform-Copy {
     if (-not $DryRun) {
         try {
             Copy-Item -Path $SourcePath -Destination $DestinationPath -Force
-            Log-Message "$ActionDescription: $SourcePath -> $DestinationPath"
+            Log-Message "${ActionDescription}: ${SourcePath} -> ${DestinationPath}"
         } catch {
-            Log-Message "Failed to $ActionDescription: $_" -Level "Error"
+            Log-Message "Failed to ${ActionDescription}: $_" -Level "Error"
         }
     } else {
-        Log-Message "Dry run: Would $ActionDescription: $SourcePath -> $DestinationPath"
+        Log-Message "Dry run: Would ${ActionDescription}: ${SourcePath} -> ${DestinationPath}"
     }
 }
 
