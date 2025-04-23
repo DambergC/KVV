@@ -34,8 +34,6 @@
     .\OutlookSignatureBackupRestore.ps1 -DryRun
 #>
 
-
-
 # Parameters for flexibility
 param (
     [string]$LocalPath = "$($env:APPDATA)\Microsoft\Signatures",
@@ -43,33 +41,40 @@ param (
     [switch]$DryRun
 )
 
-# Get the currently logged-on user
-$LoggedOnUser = (Get-CimInstance -ClassName Win32_ComputerSystem).UserName
-
-if ($null -eq $LoggedOnUser) {
-    Write-Output "No user is currently logged on."
-    exit
-}
-
-# Extract the username from the domain\username format
-$Username = $LoggedOnUser.Split('\')[-1]
-
-# Dynamically set the LocalPath if not provided
-if (-not $LocalPath) {
-    $LocalPath = "C:\Users\$Username\AppData\Roaming\Microsoft\Signatures"
-}
-
 # Log file path
 $LogFilePath = Join-Path -Path $BackupPath -ChildPath "BackupRestore.log"
 
-# Ensure the backup directory exists
-if (!(Test-Path -Path $BackupPath)) {
+# Function to handle log rotation
+function Rotate-Log {
+    param (
+        [string]$LogFilePath,
+        [int]$MaxSizeKB = 1024, # Maximum log file size in KB (default: 1MB)
+        [int]$MaxArchives = 5   # Maximum number of archived logs
+    )
+
     try {
-        New-Item -ItemType Directory -Path $BackupPath -Force
-        Log-Message "Backup directory created at $BackupPath"
+        if (Test-Path $LogFilePath) {
+            # Check the size of the log file
+            $logSizeKB = (Get-Item $LogFilePath).Length / 1KB
+            if ($logSizeKB -ge $MaxSizeKB) {
+                # Rotate logs
+                for ($i = $MaxArchives - 1; $i -ge 1; $i--) {
+                    $oldLog = "$LogFilePath.$i"
+                    $newLog = "$LogFilePath.$($i + 1)"
+                    if (Test-Path $oldLog) {
+                        Rename-Item -Path $oldLog -NewName $newLog -Force
+                    }
+                }
+
+                # Archive the current log
+                Rename-Item -Path $LogFilePath -NewName "$LogFilePath.1" -Force
+
+                # Create a new empty log file
+                New-Item -Path $LogFilePath -ItemType File -Force | Out-Null
+            }
+        }
     } catch {
-        Log-Message "Failed to create backup directory: $_" -Level "Error"
-        exit 1
+        Log-Message -Message "Log rotation failed: $_" -Level "Error"
     }
 }
 
@@ -81,11 +86,14 @@ function Log-Message {
     )
     $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $LogEntry = "[$Timestamp] [$Level] $Message"
-    
+
+    # Rotate logs before writing
+    Rotate-Log -LogFilePath $LogFilePath -MaxSizeKB 1024 -MaxArchives 5
+
     # Write to log file
     Add-Content -Path $LogFilePath -Value $LogEntry
-    
-    # Optional: Only write errors to the console
+
+    # Display log entries based on level
     if ($Level -eq "Error") {
         Write-Host $LogEntry -ForegroundColor Red
     } elseif ($Level -eq "Warning") {
@@ -95,12 +103,12 @@ function Log-Message {
     }
 }
 
-if ($DryRun) {
-    Log-Message "Dry run mode enabled. No changes will be made."
-}
+# Example usage of Log-Message in the script
+Log-Message -Message "Script started." -Level "Info"
 
-# The rest of the script continues as before
-# ...
+if ($DryRun) {
+    Log-Message -Message "Dry run mode enabled. No changes will be made." -Level "Warning"
+}
 
 # Function to calculate the relative path
 function Get-RelativePath {
