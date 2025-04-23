@@ -108,3 +108,23 @@ if (-Not (Test-Path -Path $SourcePath) -or -Not (Get-ChildItem -Path $SourcePath
 # Write the content to the file
 Set-Content -Path $ScriptFile -Value $ScriptContent -Force
 Write-Host "Populated script file: $ScriptFile"
+
+# Create scheduled task to run the script
+$TaskName = "BackupRestoreOutlookSignatures_UserContext"
+
+# Define the action for the task
+$Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptFile`""
+
+# Define the triggers
+$TriggerLogon = New-ScheduledTaskTrigger -AtLogOn
+$TriggerLogoff = New-ScheduledTaskTrigger -AtLogOff
+$TriggerTime1 = New-ScheduledTaskTrigger -Daily -At "11:00AM"
+$TriggerTime2 = New-ScheduledTaskTrigger -Daily -At "3:00PM"
+
+# Register the task for the current user
+try {
+    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $TriggerLogon, $TriggerLogoff, $TriggerTime1, $TriggerTime2 -User $env:USERNAME
+    Write-Host "Scheduled Task '$TaskName' created successfully for user: $env:USERNAME."
+} catch {
+    Write-Error "Failed to create Scheduled Task: $_"
+}
