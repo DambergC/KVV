@@ -1,8 +1,37 @@
 # Parameters for flexibility
 param (
     [string]$LocalPath = "$($env:APPDATA)\Microsoft\Signatures",
-    [string]$BackupPath = "$($env:APPDATA)\Backup\Signatures"
+    [string]$BackupPath = "$($env:APPDATA)\Backup\Signatures",
+    [switch]$DryRun
 )
+
+# Log file path
+$LogFilePath = Join-Path -Path $BackupPath -ChildPath "BackupRestore.log"
+
+# Ensure the backup directory exists
+if (!(Test-Path -Path $BackupPath)) {
+    try {
+        New-Item -ItemType Directory -Path $BackupPath -Force
+        Write-Host "Backup directory created at $BackupPath"
+    } catch {
+        Write-Error "Failed to create backup directory: $_"
+        exit 1
+    }
+}
+
+# Logging utility for better feedback
+function Log-Message {
+    param (
+        [string]$message
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Write-Host "[$timestamp] $message"
+    Add-Content -Path $LogFilePath -Value "[$timestamp] $message"
+}
+
+if ($DryRun) {
+    Log-Message "Dry run mode enabled. No changes will be made."
+}
 
 # Function to calculate the relative path
 function Get-RelativePath {
@@ -38,22 +67,22 @@ function Compare-Timestamps {
     }
 }
 
-# Logging utility for better feedback
-function Log-Message {
+# Utility function to handle file copy operations
+function Perform-Copy {
     param (
-        [string]$message
+        [string]$SourcePath,
+        [string]$DestinationPath,
+        [string]$ActionDescription
     )
-    Write-Host "$message"
-}
-
-# Ensure the backup directory exists
-if (!(Test-Path -Path $BackupPath)) {
-    try {
-        New-Item -ItemType Directory -Path $BackupPath -Force
-        Log-Message "Backup directory created at $BackupPath"
-    } catch {
-        Write-Error "Failed to create backup directory: $_"
-        exit 1
+    if (-not $DryRun) {
+        try {
+            Copy-Item -Path $SourcePath -Destination $DestinationPath -Force
+            Log-Message "$ActionDescription: $SourcePath -> $DestinationPath"
+        } catch {
+            Write-Error "Failed to $ActionDescription: $_"
+        }
+    } else {
+        Log-Message "Dry run: Would $ActionDescription: $SourcePath -> $DestinationPath"
     }
 }
 
@@ -73,27 +102,12 @@ if (Test-Path -Path $LocalPath) {
             if (Test-Path -Path $backupFile) {
                 $comparison = Compare-Timestamps -localFile $file.FullName -backupFile $backupFile
                 if ($comparison -eq "LocalNewer") {
-                    try {
-                        Copy-Item -Path $file.FullName -Destination $backupFile -Force
-                        Log-Message "Updated backup for $file.FullName"
-                    } catch {
-                        Write-Error "Failed to update backup for $file.FullName: $_"
-                    }
+                    Perform-Copy -SourcePath $file.FullName -DestinationPath $backupFile -ActionDescription "Update backup for"
                 } elseif ($comparison -eq "BackupNewer") {
-                    try {
-                        Copy-Item -Path $backupFile -Destination $file.FullName -Force
-                        Log-Message "Restored $file.FullName from backup"
-                    } catch {
-                        Write-Error "Failed to restore $file.FullName from backup: $_"
-                    }
+                    Perform-Copy -SourcePath $backupFile -DestinationPath $file.FullName -ActionDescription "Restore"
                 }
             } else {
-                try {
-                    Copy-Item -Path $file.FullName -Destination $backupFile -Force
-                    Log-Message "Backed up $file.FullName"
-                } catch {
-                    Write-Error "Failed to back up $file.FullName: $_"
-                }
+                Perform-Copy -SourcePath $file.FullName -DestinationPath $backupFile -ActionDescription "Backup"
             }
         }
 
@@ -103,32 +117,17 @@ if (Test-Path -Path $LocalPath) {
             $localFile = Join-Path -Path $LocalPath -ChildPath $relativePath
 
             if (-not (Test-Path -Path $localFile)) {
-                try {
-                    Copy-Item -Path $backupFile.FullName -Destination $localFile -Force
-                    Log-Message "Restored missing file $localFile from backup"
-                } catch {
-                    Write-Error "Failed to restore missing file $localFile from backup: $_"
-                }
+                Perform-Copy -SourcePath $backupFile.FullName -DestinationPath $localFile -ActionDescription "Restore missing file"
             }
         }
     } else {
         # Backup local signatures if no backup exists
-        try {
-            Copy-Item -Path "$LocalPath\*" -Destination $BackupPath -Recurse
-            Log-Message "All local signatures backed up to $BackupPath"
-        } catch {
-            Write-Error "Failed to back up local signatures: $_"
-        }
+        Perform-Copy -SourcePath "$LocalPath\*" -DestinationPath $BackupPath -ActionDescription "Backup all local signatures"
     }
 } else {
     # Restore from backup if no local signatures exist
     if (Test-Path -Path $BackupPath) {
-        try {
-            Copy-Item -Path "$BackupPath\*" -Destination $LocalPath -Recurse
-            Log-Message "Restored all signatures from backup to $LocalPath"
-        } catch {
-            Write-Error "Failed to restore signatures from backup: $_"
-        }
+        Perform-Copy -SourcePath "$BackupPath\*" -DestinationPath $LocalPath -ActionDescription "Restore all signatures from backup"
     } else {
         Write-Error "No local signatures or backup found. Nothing to do."
     }
