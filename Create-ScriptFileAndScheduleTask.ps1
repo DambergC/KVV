@@ -2,13 +2,37 @@
 $ScriptDirectory = "C:\Program Files\BackupOutlookSign"
 $ScriptFile = Join-Path -Path $ScriptDirectory -ChildPath "BackupRestore-OutlookSignatureFiles.ps1"
 
+# Define the log file path
+$LogFilePath = "C:\Windows\Temp\BackupRestore-OutlookSignatureFiles.log"
+
 # Ensure the directory exists
 if (-Not (Test-Path -Path $ScriptDirectory)) {
     New-Item -ItemType Directory -Path $ScriptDirectory -Force | Out-Null
     Write-Host "Created directory: $ScriptDirectory"
 }
 
-# Populate the script file with content from the GitHub repository
+# Function to write to the log
+function Write-Log {
+    param (
+        [string]$Message
+    )
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    
+    # Write to console
+    Write-Host "$Timestamp - $Message"
+
+    # Ensure the log file directory exists before writing
+    $LogDir = Split-Path -Path $LogFilePath -Parent
+    if (-Not (Test-Path -Path $LogDir)) {
+        New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+        Write-Host "Created log directory: $LogDir"
+    }
+
+    # Append to log file
+    Add-Content -Path $LogFilePath -Value "$Timestamp - $Message"
+}
+
+# Ensure the script file is populated
 $ScriptContent = @"
 <#
 <#
@@ -112,8 +136,6 @@ if (-Not (Test-Path -Path $SourcePath) -or -Not (Get-ChildItem -Path $SourcePath
     Write-Host "Backup and restore process completed successfully."
 }
 "@
-
-# Write the content to the file
 Set-Content -Path $ScriptFile -Value $ScriptContent -Force
 Write-Host "Populated script file: $ScriptFile"
 
@@ -135,9 +157,12 @@ if (-Not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) 
         # Register the task for the current user
         Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $TriggerLogon, $TriggerLogoff, $TriggerTime1, $TriggerTime2 -User $env:USERNAME
         Write-Host "Scheduled Task '$TaskName' created successfully for user: $env:USERNAME."
+        Write-Log "Scheduled Task '$TaskName' created successfully for user: $env:USERNAME."
     } catch {
         Write-Error "Failed to create Scheduled Task: $_"
+        Write-Log "Error: Failed to create Scheduled Task: $_"
     }
 } else {
     Write-Host "Scheduled Task '$TaskName' already exists. Skipping creation."
+    Write-Log "Scheduled Task '$TaskName' already exists. Skipping creation."
 }
