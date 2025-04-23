@@ -11,22 +11,29 @@ if (-Not (Test-Path -Path $ScriptDirectory)) {
     Write-Host "Created directory: $ScriptDirectory"
 }
 
+# Ensure the log file directory exists
+$LogDir = Split-Path -Path $LogFilePath -Parent
+if (-Not (Test-Path -Path $LogDir)) {
+    try {
+        New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+        Write-Host "Created log directory: $LogDir"
+    } catch {
+        Write-Error "Failed to create log directory: $_"
+    }
+}
+
 # Function to write to the log
 function Write-Log {
     param (
         [string]$Message
     )
     $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    
-    # Write to console
-    Write-Host "$Timestamp - $Message"
-
-    # Ensure the log file directory exists before writing
-    $LogDir = Split-Path -Path $LogFilePath -Parent
-    if (-Not (Test-Path -Path $LogDir)) {
-        New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
-        Write-Host "Created log directory: $LogDir"
+    try {
+        Add-Content -Path $LogFilePath -Value "$Timestamp - $Message"
+    } catch {
+        Write-Error "Failed to write to log file: $_"
     }
+}
 
     # Append to log file
     Add-Content -Path $LogFilePath -Value "$Timestamp - $Message"
@@ -151,18 +158,28 @@ $TriggerLogoff = New-ScheduledTaskTrigger -AtLogOff
 $TriggerTime1 = New-ScheduledTaskTrigger -Daily -At "11:00AM"
 $TriggerTime2 = New-ScheduledTaskTrigger -Daily -At "3:00PM"
 
-# Check if the scheduled task already exists
-if (-Not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
-    try {
-        # Register the task for the current user
+# Validate triggers before creating the scheduled task
+try {
+    $TriggerLogon = New-ScheduledTaskTrigger -AtLogOn
+    $TriggerLogoff = New-ScheduledTaskTrigger -AtLogOff
+    $TriggerTime1 = New-ScheduledTaskTrigger -Daily -At "11:00AM"
+    $TriggerTime2 = New-ScheduledTaskTrigger -Daily -At "3:00PM"
+
+    # Ensure none of the triggers are null
+    if (-not $TriggerLogon -or -not $TriggerLogoff -or -not $TriggerTime1 -or -not $TriggerTime2) {
+        throw "One or more triggers are null or invalid."
+    }
+
+    # Create the task if it doesn't already exist
+    if (-Not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) {
         Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $TriggerLogon, $TriggerLogoff, $TriggerTime1, $TriggerTime2 -User $env:USERNAME
         Write-Host "Scheduled Task '$TaskName' created successfully for user: $env:USERNAME."
         Write-Log "Scheduled Task '$TaskName' created successfully for user: $env:USERNAME."
-    } catch {
-        Write-Error "Failed to create Scheduled Task: $_"
-        Write-Log "Error: Failed to create Scheduled Task: $_"
+    } else {
+        Write-Host "Scheduled Task '$TaskName' already exists. Skipping creation."
+        Write-Log "Scheduled Task '$TaskName' already exists. Skipping creation."
     }
-} else {
-    Write-Host "Scheduled Task '$TaskName' already exists. Skipping creation."
-    Write-Log "Scheduled Task '$TaskName' already exists. Skipping creation."
+} catch {
+    Write-Error "Failed to create scheduled task or validate triggers: $_"
+    Write-Log "Error: Failed to create scheduled task or validate triggers: $_"
 }
