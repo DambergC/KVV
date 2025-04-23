@@ -104,32 +104,44 @@ if (Test-Path -Path $LocalPath) {
         $localFiles = Get-ChildItem -Path $LocalPath -Recurse
         $backupFiles = Get-ChildItem -Path $BackupPath -Recurse
 
-        # Process files in the local directory
-        foreach ($file in $localFiles) {
-            $relativePath = $file.FullName.Substring($LocalPath.Length).TrimStart('\')
-            $backupFile = Join-Path -Path $BackupPath -ChildPath $relativePath
+# Process files in the local directory
+foreach ($file in $localFiles) {
+    $relativePath = $file.FullName.Substring($LocalPath.Length).TrimStart('\')
+    $backupFile = Join-Path -Path $BackupPath -ChildPath $relativePath
 
-            if (Test-Path -Path $backupFile) {
-                $comparison = Compare-Timestamps -localFile $file.FullName -backupFile $backupFile
-                if ($comparison -eq "LocalNewer") {
-                    Perform-Copy -SourcePath $file.FullName -DestinationPath $backupFile -ActionDescription "Update backup for"
-                } elseif ($comparison -eq "BackupNewer") {
-                    Perform-Copy -SourcePath $backupFile -DestinationPath $file.FullName -ActionDescription "Restore"
-                }
-            } else {
-                Perform-Copy -SourcePath $file.FullName -DestinationPath $backupFile -ActionDescription "Backup"
-            }
+    # Skip the log file
+    if ($file.FullName -eq $LogFilePath) {
+        Log-Message "Skipping log file during backup: $file.FullName"
+        continue
+    }
+
+    if (Test-Path -Path $backupFile) {
+        $comparison = Compare-Timestamps -localFile $file.FullName -backupFile $backupFile
+        if ($comparison -eq "LocalNewer") {
+            Perform-Copy -SourcePath $file.FullName -DestinationPath $backupFile -ActionDescription "Update backup for"
+        } elseif ($comparison -eq "BackupNewer") {
+            Perform-Copy -SourcePath $backupFile -DestinationPath $file.FullName -ActionDescription "Restore"
         }
+    } else {
+        Perform-Copy -SourcePath $file.FullName -DestinationPath $backupFile -ActionDescription "Backup"
+    }
+}
 
-        # Process files in the backup directory that are missing locally
-        foreach ($backupFile in $backupFiles) {
-            $relativePath = $backupFile.FullName.Substring($BackupPath.Length).TrimStart('\')
-            $localFile = Join-Path -Path $LocalPath -ChildPath $relativePath
+# Process files in the backup directory that are missing locally
+foreach ($backupFile in $backupFiles) {
+    $relativePath = $backupFile.FullName.Substring($BackupPath.Length).TrimStart('\')
+    $localFile = Join-Path -Path $LocalPath -ChildPath $relativePath
 
-            if (-not (Test-Path -Path $localFile)) {
-                Perform-Copy -SourcePath $backupFile.FullName -DestinationPath $localFile -ActionDescription "Restore missing file"
-            }
-        }
+    # Skip the log file
+    if ($backupFile.FullName -eq $LogFilePath) {
+        Log-Message "Skipping log file during restore: $backupFile.FullName"
+        continue
+    }
+
+    if (-not (Test-Path -Path $localFile)) {
+        Perform-Copy -SourcePath $backupFile.FullName -DestinationPath $localFile -ActionDescription "Restore missing file"
+    }
+}
     } else {
         # Backup local signatures if no backup exists
         Perform-Copy -SourcePath "$LocalPath\*" -DestinationPath $BackupPath -ActionDescription "Backup all local signatures"
