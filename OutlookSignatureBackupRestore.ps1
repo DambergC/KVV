@@ -5,13 +5,6 @@ param (
     [switch]$DryRun
 )
 
-# Parameters for flexibility
-param (
-    [string]$LocalPath,
-    [string]$BackupPath = "$($env:APPDATA)\Backup\Signatures",
-    [switch]$DryRun
-)
-
 # Get the currently logged-on user
 $LoggedOnUser = (Get-CimInstance -ClassName Win32_ComputerSystem).UserName
 
