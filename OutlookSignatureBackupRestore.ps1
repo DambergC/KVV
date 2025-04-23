@@ -5,6 +5,29 @@ param (
     [switch]$DryRun
 )
 
+# Parameters for flexibility
+param (
+    [string]$LocalPath,
+    [string]$BackupPath = "$($env:APPDATA)\Backup\Signatures",
+    [switch]$DryRun
+)
+
+# Get the currently logged-on user
+$LoggedOnUser = (Get-CimInstance -ClassName Win32_ComputerSystem).UserName
+
+if ($null -eq $LoggedOnUser) {
+    Write-Output "No user is currently logged on."
+    exit
+}
+
+# Extract the username from the domain\username format
+$Username = $LoggedOnUser.Split('\')[-1]
+
+# Dynamically set the LocalPath if not provided
+if (-not $LocalPath) {
+    $LocalPath = "C:\Users\$Username\AppData\Roaming\Microsoft\Signatures"
+}
+
 # Log file path
 $LogFilePath = Join-Path -Path $BackupPath -ChildPath "BackupRestore.log"
 
@@ -44,6 +67,9 @@ function Log-Message {
 if ($DryRun) {
     Log-Message "Dry run mode enabled. No changes will be made."
 }
+
+# The rest of the script continues as before
+# ...
 
 # Function to calculate the relative path
 function Get-RelativePath {
