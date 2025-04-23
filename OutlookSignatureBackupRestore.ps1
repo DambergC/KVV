@@ -1,8 +1,20 @@
 # Parameters for flexibility
 param (
-    [string]$LocalPath = "$env:APPDATA\Microsoft\Signatures",
-    [string]$BackupPath = "\\server\backup\Signatures\$env:USERNAME"
+    [string]$LocalPath = "$($env:APPDATA)\Microsoft\Signatures",
+    [string]$BackupPath = "$($env:APPDATA)\Backup\Signatures"
 )
+
+# Function to calculate the relative path
+function Get-RelativePath {
+    param (
+        [string]$BasePath,
+        [string]$TargetPath
+    )
+    $baseUri = New-Object System.Uri($BasePath)
+    $targetUri = New-Object System.Uri($TargetPath)
+    $relativeUri = $baseUri.MakeRelativeUri($targetUri)
+    return $relativeUri.ToString().Replace('/', '\')
+}
 
 # Function to compare file timestamps
 function Compare-Timestamps {
@@ -52,7 +64,7 @@ if (Test-Path -Path $LocalPath) {
         # Compare files and decide whether to backup or restore
         $localFiles = Get-ChildItem -Path $LocalPath -Recurse
         foreach ($file in $localFiles) {
-            $relativePath = [System.IO.Path]::GetRelativePath($LocalPath, $file.FullName)
+            $relativePath = $file.FullName.Substring($LocalPath.Length).TrimStart('\')  # Ensure no leading backslash
             $backupFile = Join-Path -Path $BackupPath -ChildPath $relativePath
 
             if (Test-Path -Path $backupFile) {
