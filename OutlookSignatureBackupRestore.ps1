@@ -12,9 +12,9 @@ $LogFilePath = Join-Path -Path $BackupPath -ChildPath "BackupRestore.log"
 if (!(Test-Path -Path $BackupPath)) {
     try {
         New-Item -ItemType Directory -Path $BackupPath -Force
-        Write-Host "Backup directory created at $BackupPath"
+        Log-Message "Backup directory created at $BackupPath"
     } catch {
-        Write-Error "Failed to create backup directory: $_"
+        Log-Message "Failed to create backup directory: $_" -Level "Error"
         exit 1
     }
 }
@@ -22,11 +22,23 @@ if (!(Test-Path -Path $BackupPath)) {
 # Logging utility for better feedback
 function Log-Message {
     param (
-        [string]$message
+        [string]$Message,
+        [string]$Level = "Info" # Default to Info
     )
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Write-Host "[$timestamp] $message"
-    Add-Content -Path $LogFilePath -Value "[$timestamp] $message"
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LogEntry = "[$Timestamp] [$Level] $Message"
+    
+    # Write to log file
+    Add-Content -Path $LogFilePath -Value $LogEntry
+    
+    # Optional: Only write errors to the console
+    if ($Level -eq "Error") {
+        Write-Host $LogEntry -ForegroundColor Red
+    } elseif ($Level -eq "Warning") {
+        Write-Host $LogEntry -ForegroundColor Yellow
+    } else {
+        Write-Host $LogEntry
+    }
 }
 
 if ($DryRun) {
@@ -63,7 +75,7 @@ function Compare-Timestamps {
             return "Same"
         }
     } catch {
-        Write-Error "Error comparing timestamps for $localFile and $backupFile: $_"
+        Log-Message "Error comparing timestamps for $localFile and $backupFile: $_" -Level "Error"
     }
 }
 
@@ -79,7 +91,7 @@ function Perform-Copy {
             Copy-Item -Path $SourcePath -Destination $DestinationPath -Force
             Log-Message "$ActionDescription: $SourcePath -> $DestinationPath"
         } catch {
-            Write-Error "Failed to $ActionDescription: $_"
+            Log-Message "Failed to $ActionDescription: $_" -Level "Error"
         }
     } else {
         Log-Message "Dry run: Would $ActionDescription: $SourcePath -> $DestinationPath"
@@ -129,6 +141,6 @@ if (Test-Path -Path $LocalPath) {
     if (Test-Path -Path $BackupPath) {
         Perform-Copy -SourcePath "$BackupPath\*" -DestinationPath $LocalPath -ActionDescription "Restore all signatures from backup"
     } else {
-        Write-Error "No local signatures or backup found. Nothing to do."
+        Log-Message "No local signatures or backup found. Nothing to do." -Level "Error"
     }
 }
