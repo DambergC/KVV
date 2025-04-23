@@ -15,13 +15,11 @@ The path to the backup location. Defaults to a folder in the user's Documents di
 .\BackupRestore-OutlookSignatureFiles.ps1
 #>
 
+# Parameters for source and backup paths
 param (
-    [string]$SourcePath = "$env:APPDATA\Microsoft\Signatures",
-    [string]$BackupPath = "$env:HOMEDRIVE$env:HOMEPATH\Documents\OutlookSignaturesBackup"
+    [string]$SourcePath = "$env:USERPROFILE\AppData\Roaming\Microsoft\Signatures",
+    [string]$BackupPath = "$env:USERPROFILE\Documents\OutlookSignaturesBackup"
 )
-
-# Enable strict mode
-Set-StrictMode -Version Latest
 
 # Function to write to the log
 function Write-Log {
@@ -29,8 +27,17 @@ function Write-Log {
         [string]$Message
     )
     $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LogFilePath = "C:\Windows\Temp\BackupRestore-OutlookSignatureFiles.log"
+    
+    # Write to console
     Write-Host "$Timestamp - $Message"
+    
+    # Append to log file
+    Add-Content -Path $LogFilePath -Value "$Timestamp - $Message"
 }
+
+# Enable strict mode
+Set-StrictMode -Version Latest
 
 # Ensure the backup folder exists
 if (-Not (Test-Path -Path $BackupPath)) {
