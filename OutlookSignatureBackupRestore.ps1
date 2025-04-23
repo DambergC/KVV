@@ -99,7 +99,7 @@ function Log-Message {
     } elseif ($Level -eq "Warning") {
         Write-Host $LogEntry -ForegroundColor Yellow
     } else {
-        Write-Host $LogEntry
+        Write-Host $LogEntry -ForegroundColor Green
     }
 }
 
@@ -176,7 +176,7 @@ foreach ($file in $localFiles) {
 
     # Skip the log file
     if ($file.FullName -eq $LogFilePath) {
-        Log-Message "Skipping log file during backup: $file.FullName"
+        Log-Message "Skipping log file during backup: $file"
         continue
     }
 
@@ -199,7 +199,7 @@ foreach ($backupFile in $backupFiles) {
 
     # Skip the log file
     if ($backupFile.FullName -eq $LogFilePath) {
-        Log-Message "Skipping log file during restore: $backupFile.FullName"
+        Log-Message "Skipping log file during restore: $backupFile"
         continue
     }
 
