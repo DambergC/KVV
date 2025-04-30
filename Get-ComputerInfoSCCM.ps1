@@ -30,7 +30,14 @@ foreach ($CMDevice in $CMDevices) {
     # Retrieve additional information about the device
     $ComputerDetails = Get-WmiObject -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_COMPUTER_SYSTEM WHERE ResourceID = '$($CMDevice.ResourceID)'"
     $OperatingSystem = Get-WmiObject -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_OPERATING_SYSTEM WHERE ResourceID = '$($CMDevice.ResourceID)'"
-    $BoundaryGroups = Get-WmiObject -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_BoundaryGroupMembers WHERE ResourceID = '$($CMDevice.ResourceID)'"
+
+    # Retrieve Boundary Groups
+    $BoundaryGroups = Get-WmiObject -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_BoundaryGroupMembers WHERE ResourceID = '$($CMDevice.ResourceID)'" | ForEach-Object { $_.Name }
+
+    # Fallback for empty or incorrect results
+    if (-not $BoundaryGroups) {
+        $BoundaryGroups = "No Boundary Group"
+    }
 
     # Gather details
     $Datornamn = $CMDevice.Name
@@ -47,7 +54,7 @@ foreach ($CMDevice in $CMDevices) {
     $Användartitel = "Unknown"  # ConfigMgr does not store user titles
     $Användarplats = "Unknown"  # ConfigMgr does not store user locations
     $DHCPScope = "Unknown"  # ConfigMgr does not store DHCP scopes
-    $Boundarygrupp = ($BoundaryGroups | ForEach-Object { $_.Name }) -join ", "
+    $Boundarygrupp = $BoundaryGroups -join ", "
 
     # Create a custom object
     $myobj = [PSCustomObject]@{
