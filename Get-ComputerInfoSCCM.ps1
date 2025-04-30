@@ -15,10 +15,10 @@ if ((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinu
 
 Set-Location "$($SiteCode):\"
 
-Write-Host "Retrieving CM device objects from ConfigMgr via WMI" -ForegroundColor White
+Write-Host "Retrieving CM device objects from ConfigMgr via CIM" -ForegroundColor White
 
 # Retrieve all device information
-$CMDevices = Get-WmiObject -Namespace "root\sms\site_$SiteCode" -Class SMS_R_System
+$CMDevices = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -ClassName SMS_R_System
 
 # Prepare the output array
 $outputComputers = @()
@@ -28,11 +28,11 @@ foreach ($CMDevice in $CMDevices) {
     Write-Host "Processing device: $($CMDevice.Name)" -ForegroundColor Yellow
 
     # Retrieve additional information about the device
-    $ComputerDetails = Get-WmiObject -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_COMPUTER_SYSTEM WHERE ResourceID = '$($CMDevice.ResourceID)'"
-    $OperatingSystem = Get-WmiObject -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_OPERATING_SYSTEM WHERE ResourceID = '$($CMDevice.ResourceID)'"
+    $ComputerDetails = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_COMPUTER_SYSTEM WHERE ResourceID = '$($CMDevice.ResourceID)'"
+    $OperatingSystem = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_OPERATING_SYSTEM WHERE ResourceID = '$($CMDevice.ResourceID)'"
 
     # Retrieve Boundary Groups
-    $BoundaryGroups = Get-WmiObject -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_BoundaryGroupMembers WHERE ResourceID = '$($CMDevice.ResourceID)'" | ForEach-Object { $_.Name }
+    $BoundaryGroups = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_BoundaryGroupMembers WHERE ResourceID = '$($CMDevice.ResourceID)'" | ForEach-Object { $_.Name }
 
     # Fallback for empty or incorrect results
     if (-not $BoundaryGroups) {
