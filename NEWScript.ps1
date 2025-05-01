@@ -15,7 +15,7 @@ Name of the SMS Provider machine.
 Path to save the output CSV file.
 
 .EXAMPLE
-.\OLDscript.ps1 -SiteCode "KV1" -ProviderMachineName "vntsql0299.kvv.se" -OutputPath "C:\temp\output.csv"
+.\NEWScript.ps1 -SiteCode "KV1" -ProviderMachineName "vntsql0299.kvv.se" -OutputPath "C:\temp\output.csv"
 #>
 
 param(
@@ -64,60 +64,54 @@ try {
 # Prepare the output array
 $outputComputers = @()
 
-# Loop through each device in ConfigMgr
+# Create jobs for parallel processing
+$jobs = @()
 foreach ($CMDevice in $CMDevices) {
-    Write-Host "Processing device: $($CMDevice.Name)" -ForegroundColor Yellow
-    Write-Output "Processing device: $($CMDevice.Name)" | Out-File -Append $LogFile
+    $jobs += Start-Job -ScriptBlock {
+        param ($SiteCode, $ResourceID)
+        try {
+            # Retrieve additional information about the device
+            $ComputerDetails = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_COMPUTER_SYSTEM WHERE ResourceID = '$ResourceID'"
+            $OperatingSystem = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_OPERATING_SYSTEM WHERE ResourceID = '$ResourceID'"
+            $BoundaryGroups = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_BoundaryGroupMembers WHERE ResourceID = '$ResourceID'"
 
-    try {
-        # Retrieve additional information about the device
-        $ComputerDetails = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_COMPUTER_SYSTEM WHERE ResourceID = '$($CMDevice.ResourceID)'"
-        $OperatingSystem = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_OPERATING_SYSTEM WHERE ResourceID = '$($CMDevice.ResourceID)'"
-        $BoundaryGroups = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_BoundaryGroupMembers WHERE ResourceID = '$($CMDevice.ResourceID)'"
-    } catch {
-        Write-Warning "Unable to retrieve details for device: $($CMDevice.Name). $_"
-        continue
-    }
-
-    # Gather details
-    $Datornamn = $CMDevice.Name
-    $Plattform = if ($ComputerDetails.Model -like "*Server*") { "Server" } else { "Workstation" }
-    $Serienummer = $ComputerDetails.SerialNumber
-    $Operativsystem = $OperatingSystem.Caption
-    $Operativsystemversion = $OperatingSystem.Version
-    $Tillverkare = $ComputerDetails.Manufacturer
-    $Modell = $ComputerDetails.Model
-    $Inloggningsdatum = $OperatingSystem.LastBootUpTime
-    $Aktiverad = $CMDevice.Client
-    $Primäranvändare = $CMDevice.PrimaryUser
-    $Användare = $CMDevice.LastLogonUserName
-    $Användartitel = "Unknown"  # ConfigMgr does not store user titles
-    $Användarplats = "Unknown"  # ConfigMgr does not store user locations
-    $DHCPScope = "Unknown"  # ConfigMgr does not store DHCP scopes
-    $Boundarygrupp = ($BoundaryGroups | ForEach-Object { $_.Name }) -join ", "
-
-    # Create a custom object
-    $myobj = [PSCustomObject]@{
-        Datornamn            = $Datornamn
-        Plattform            = $Plattform
-        Serienummer          = $Serienummer
-        Operativsystem       = $Operativsystem
-        Operativsystemversion = $Operativsystemversion
-        Tillverkare          = $Tillverkare
-        Modell               = $Modell
-        Inloggningsdatum     = $Inloggningsdatum
-        Aktiverad            = $Aktiverad
-        Primäranvändare      = $Primäranvändare
-        Användare            = $Användare
-        Användartitel        = $Användartitel
-        Användarplats        = $Användarplats
-        DHCPScope            = $DHCPScope
-        Boundarygrupp        = $Boundarygrupp
-    }
-
-    # Add the object to the output array
-    $outputComputers += $myobj
+            # Gather details
+            [PSCustomObject]@{
+                Datornamn            = $ComputerDetails.Name
+                Plattform            = if ($ComputerDetails.Model -like "*Server*") { "Server" } else { "Workstation" }
+                Serienummer          = $ComputerDetails.SerialNumber
+                Operativsystem       = $OperatingSystem.Caption
+                Operativsystemversion = $OperatingSystem.Version
+                Tillverkare          = $ComputerDetails.Manufacturer
+                Modell               = $ComputerDetails.Model
+                Inloggningsdatum     = $OperatingSystem.LastBootUpTime
+                Aktiverad            = $CMDevice.Client
+                Primäranvändare      = $CMDevice.PrimaryUser
+                Användare            = $CMDevice.LastLogonUserName
+                Användartitel        = "Unknown"
+                Användarplats        = "Unknown"
+                DHCPScope            = "Unknown"
+                Boundarygrupp        = ($BoundaryGroups | ForEach-Object { $_.Name }) -join ", "
+            }
+        } catch {
+            Write-Warning "Unable to retrieve details for device: $($CMDevice.Name). $_"
+        }
+    } -ArgumentList $SiteCode, $CMDevice.ResourceID
 }
+
+# Wait for all jobs to complete
+$jobs | ForEach-Object { $_ | Wait-Job }
+
+# Collect results from jobs
+foreach ($job in $jobs) {
+    $result = Receive-Job -Job $job
+    if ($result) {
+        $outputComputers += $result
+    }
+}
+
+# Clean up jobs
+$jobs | ForEach-Object { Remove-Job -Job $_ }
 
 # Export the results to a CSV file
 try {
