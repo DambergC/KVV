@@ -1,124 +1,97 @@
-<# 
-.SYNOPSIS
-Script to export device details from Configuration Manager.
+# Site configuration
+$SiteCode = "KV1" # Site code
+$ProviderMachineName = "vntsql0299.kvv.se" # SMS Provider machine name
+$DHCPServerName = "vntdhcp0002.kvv.se"
+$ADSearchBaseMITA = "OU=Windows10 SMP,OU=Datorer,OU=Kriminalvården,DC=kvv,DC=se"
+$ADSearchBaseT1 = "OU=Windows10 T1,OU=Datorer,OU=Kriminalvården,DC=kvv,DC=se"
 
-.DESCRIPTION
-This script retrieves device details from a Configuration Manager environment and exports them to a CSV.
-
-.PARAMETER SiteCode
-Site code of the Configuration Manager.
-
-.PARAMETER ProviderMachineName
-Name of the SMS Provider machine.
-
-.PARAMETER OutputPath
-Path to save the output CSV file.
-
-.EXAMPLE
-.\NEWScript.ps1 -SiteCode "KV1" -ProviderMachineName "vntsql0299.kvv.se" -OutputPath "C:\temp\output.csv"
-#>
-
-param(
-    [string]$SiteCode = "KV1",
-    [string]$ProviderMachineName = "vntsql0299.kvv.se",
-    [string]$OutputPath = "C:\temp\ConfigMgr_Computers.csv"
-)
-
-# Logging setup
-$LogFile = "C:\temp\ScriptLog.txt"
-Write-Output "Script started at $(Get-Date)" | Out-File -Append $LogFile
-
-# Import the ConfigurationManager module with error handling
-try {
-    if ((Get-Module ConfigurationManager) -eq $null) {
-        Import-Module "$($ENV:SMS_ADMIN_UI_PATH)\..\ConfigurationManager.psd1"
-    }
-} catch {
-    Write-Error "Failed to import ConfigurationManager module. $_"
-    exit 1
+# Import ConfigurationManager Module
+if (-not (Get-Module -Name ConfigurationManager)) {
+    Import-Module "$($ENV:SMS_ADMIN_UI_PATH)\..\ConfigurationManager.psd1" -ErrorAction Stop
 }
 
-# Connect to the ConfigMgr site drive with error handling
-try {
-    if ((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue) -eq $null) {
-        New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $ProviderMachineName
-    }
-} catch {
-    Write-Error "Unable to connect to ConfigMgr site drive. $_"
-    exit 1
+# Connect to CMSite Drive if not present
+if (-not (Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {
+    New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $ProviderMachineName -ErrorAction Stop
 }
 
-Set-Location "$($SiteCode):\"
+# Set the current location to the site code
+Set-Location "$($SiteCode):\" -ErrorAction Stop
 
-Write-Host "Retrieving CM device objects from ConfigMgr via WMI" -ForegroundColor White
-Write-Output "Retrieving CM device objects from ConfigMgr via WMI" | Out-File -Append $LogFile
+# Retrieve DHCP scopes once
+Write-Host "Retrieving DHCP scopes from DHCP server..." -ForegroundColor White
+$dhcpScopes = Get-DhcpServerv4Scope -ComputerName $DHCPServerName
 
-# Retrieve all device information
-try {
-    $CMDevices = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -ClassName SMS_R_System
-} catch {
-    Write-Error "Failed to retrieve CM device objects. $_"
-    exit 1
+# Function to get scope names for subnets
+function Get-ScopeName {
+    param ([string]$SubnetIP)
+    ($dhcpScopes | Where-Object { $_.ScopeId -eq $SubnetIP }).Name
 }
 
-# Prepare the output array
-$outputComputers = @()
+# Function to get computer scope names
+function Get-ComputerScopeNames {
+    param ([string]$ComputerName, [array]$CMDevObjects)
+    $Subnets = ($CMDevObjects | Where-Object { $_.Name -eq $ComputerName }).IPSubnets
+    $Subnets = $Subnets | Where-Object { $_ -ne "10.0.0.0" }
+    $SubnetNames = foreach ($Subnet in $Subnets) { Get-ScopeName $Subnet }
+    ($SubnetNames | Where-Object { $_ -ne $null }) -join ", "
+}
 
-# Create jobs for parallel processing
-$jobs = @()
-foreach ($CMDevice in $CMDevices) {
-    $jobs += Start-Job -ScriptBlock {
-        param ($SiteCode, $ResourceID)
-        try {
-            # Retrieve additional information about the device
-            $ComputerDetails = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_COMPUTER_SYSTEM WHERE ResourceID = '$ResourceID'"
-            $OperatingSystem = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_G_System_OPERATING_SYSTEM WHERE ResourceID = '$ResourceID'"
-            $BoundaryGroups = Get-CimInstance -Namespace "root\sms\site_$SiteCode" -Query "SELECT * FROM SMS_BoundaryGroupMembers WHERE ResourceID = '$ResourceID'"
+# Retrieve Active Directory computers (batch processing)
+function Get-ADComputers {
+    param ([string]$SearchBase)
+    Get-ADComputer -SearchBase $SearchBase -Filter * -Properties Name, OperatingSystem, OperatingSystemVersion, LastLogonDate, Enabled, DistinguishedName
+}
 
-            # Gather details
-            [PSCustomObject]@{
-                Datornamn            = $ComputerDetails.Name
-                Plattform            = if ($ComputerDetails.Model -like "*Server*") { "Server" } else { "Workstation" }
-                Serienummer          = $ComputerDetails.SerialNumber
-                Operativsystem       = $OperatingSystem.Caption
-                Operativsystemversion = $OperatingSystem.Version
-                Tillverkare          = $ComputerDetails.Manufacturer
-                Modell               = $ComputerDetails.Model
-                Inloggningsdatum     = $OperatingSystem.LastBootUpTime
-                Aktiverad            = $CMDevice.Client
-                Primäranvändare      = $CMDevice.PrimaryUser
-                Användare            = $CMDevice.LastLogonUserName
-                Användartitel        = "Unknown"
-                Användarplats        = "Unknown"
-                DHCPScope            = "Unknown"
-                Boundarygrupp        = ($BoundaryGroups | ForEach-Object { $_.Name }) -join ", "
-            }
-        } catch {
-            Write-Warning "Unable to retrieve details for device: $($CMDevice.Name). $_"
+Write-Host "Retrieving Active Directory computers..." -ForegroundColor White
+$ADComputersMITA = Get-ADComputers -SearchBase $ADSearchBaseMITA
+$ADComputersT1 = Get-ADComputers -SearchBase $ADSearchBaseT1
+
+# Retrieve CM Device Objects once
+Write-Host "Retrieving CM device objects..." -ForegroundColor White
+$CMDevObjects = Get-CMDevice | Where-Object { $_.Name -ne "" }
+
+# Function to process a batch of computers
+function Process-Computers {
+    param ([array]$ADComputers, [string]$Platform)
+    $OutputComputers = @()
+
+    foreach ($ADComputer in $ADComputers) {
+        $CMDevice = $CMDevObjects | Where-Object { $_.Name -eq $ADComputer.Name }
+        $PrimaryUsers = if ($CMDevice.PrimaryUser) {
+            $CMDevice.PrimaryUser.Split(",").ForEach({
+                (Get-ADUser $_.ToUpper().Replace("KVV\", "") -Properties Name, Title).Name
+            }) -join ", "
         }
-    } -ArgumentList $SiteCode, $CMDevice.ResourceID
-}
+        $CurrentUsers = if ($CMDevice.UserName) {
+            $CMDevice.UserName.Split(",").ForEach({
+                (Get-ADUser $_.ToUpper().Replace("KVV\", "") -Properties Name, Title).Name
+            }) -join ", "
+        }
 
-# Wait for all jobs to complete
-$jobs | ForEach-Object { $_ | Wait-Job }
-
-# Collect results from jobs
-foreach ($job in $jobs) {
-    $result = Receive-Job -Job $job
-    if ($result) {
-        $outputComputers += $result
+        $myobj = [PSCustomObject]@{
+            Name               = $ADComputer.Name
+            Platform           = $Platform
+            SerialNumber       = $CMDevice.SerialNumber
+            OperatingSystem    = $ADComputer.OperatingSystem
+            OSVersion          = $ADComputer.OperatingSystemVersion
+            PrimaryUsers       = $PrimaryUsers
+            CurrentUsers       = $CurrentUsers
+            DHCP_Scope_Names   = Get-ComputerScopeNames -ComputerName $ADComputer.Name -CMDevObjects $CMDevObjects
+        }
+        $OutputComputers += $myobj
     }
+
+    return $OutputComputers
 }
 
-# Clean up jobs
-$jobs | ForEach-Object { Remove-Job -Job $_ }
+# Process MITA and T1 Computers in Parallel
+$OutputComputers = @()
+$OutputComputers += Process-Computers -ADComputers $ADComputersMITA -Platform "MITA"
+$OutputComputers += Process-Computers -ADComputers $ADComputersT1 -Platform "T1"
 
-# Export the results to a CSV file
-try {
-    $outputComputers | Export-Csv -Path $OutputPath -Delimiter ";" -NoTypeInformation -Encoding UTF8
-    Write-Host "Data exported to $OutputPath" -ForegroundColor Green
-    Write-Output "Data exported to $OutputPath" | Out-File -Append $LogFile
-} catch {
-    Write-Error "Failed to export data to CSV. $_"
-    exit 1
-}
+# Export to CSV
+Write-Host "Exporting results to CSV..." -ForegroundColor White
+$OutputComputers | Export-Csv -Path C:\temp\computerslocation.csv -Delimiter ";" -NoTypeInformation -Encoding UTF8
+
+Write-Host "Process completed!" -ForegroundColor Green
