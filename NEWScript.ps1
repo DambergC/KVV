@@ -1,3 +1,25 @@
+<#
+.SYNOPSIS
+This script retrieves information about Active Directory computers and their related Configuration Manager device objects. 
+It exports details such as primary users, current users, operating system, and DHCP scope names for computers 
+in specified Active Directory search bases to a CSV file.
+
+.DESCRIPTION
+The script performs the following tasks:
+1. Connects to the Configuration Manager site.
+2. Retrieves DHCP scopes from a specified DHCP server.
+3. Fetches details of computers from Active Directory based on given search bases.
+4. Retrieves Configuration Manager device objects and processes them in conjunction with AD data.
+5. Exports the processed information to a CSV file.
+
+.NOTES
+Author: Christian Damberg, Telia Cygate AB
+Date: 2025-05-01
+Version: 1.0
+
+#>
+
+
 # Site configuration
 $SiteCode = "KV1" # Site code
 $ProviderMachineName = "vntsql0299.kvv.se" # SMS Provider machine name
