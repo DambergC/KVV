@@ -1,0 +1,79 @@
+SELECT
+    SYS.Netbios_Name0 AS 'Device Name',
+    BIOS.SerialNumber0 AS 'Serial Number',
+    CS.Model0 AS 'Model',
+    CS.Manufacturer0 AS 'Manufacturer',
+    OS.Caption0 AS 'Operating System',
+    OS.Version0 AS 'OS Version',
+    OS.BuildNumber0 AS 'Build Number',
+    -- Alternative way to get IPv4 address
+    IPADDR.IP_Addresses0 AS 'IPv4 Address',
+    CASE 
+        WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
+        WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
+        WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
+        ELSE 'Physical'
+    END AS 'Device Type',
+    STRING_AGG(vru.Name0, ', ') AS 'Primary Users',
+    SYS.User_Name0 AS 'Last Logon User',
+    SYS.Resource_Domain_OR_Workgr0 AS 'Domain',
+    STRING_AGG(vru.Mail0, '; ') AS 'User Emails',
+    (SELECT STRING_AGG(BG.Name, '; ')
+     FROM v_RA_System_IPSubnets SYSIP
+     JOIN vSMS_Boundary B ON 
+        (B.BoundaryType = 0 AND SYSIP.IP_Subnets0 = B.Value)
+     JOIN vSMS_BoundaryGroupMembers BGM ON B.BoundaryID = BGM.BoundaryID
+     JOIN v_BoundaryGroup BG ON BGM.GroupID = BG.GroupID
+     WHERE SYSIP.ResourceID = SYS.ResourceID
+    ) AS 'Boundary Groups'
+FROM
+    v_R_System AS SYS
+JOIN
+    v_GS_COMPUTER_SYSTEM AS CS
+    ON SYS.ResourceID = CS.ResourceID
+JOIN
+    v_GS_PC_BIOS AS BIOS
+    ON SYS.ResourceID = BIOS.ResourceID
+JOIN
+    v_GS_OPERATING_SYSTEM AS OS
+    ON SYS.ResourceID = OS.ResourceID
+LEFT JOIN 
+    v_UsersPrimaryMachines upm 
+    ON SYS.ResourceID = upm.MachineID
+LEFT JOIN 
+    v_R_User vru 
+    ON upm.UserResourceID = vru.ResourceID
+-- Join to get IPv4 address
+OUTER APPLY (
+    SELECT TOP 1 IP.IP_Addresses0 
+    FROM v_RA_System_IPAddresses IP 
+    WHERE IP.ResourceID = SYS.ResourceID 
+    AND IP.IP_Addresses0 NOT LIKE '%:%' -- Filter out IPv6
+    AND IP.IP_Addresses0 NOT LIKE '169.254.%' -- Filter out APIPA addresses
+    ORDER BY 
+        CASE WHEN IP.IP_Addresses0 LIKE '10.%' THEN 1
+             WHEN IP.IP_Addresses0 LIKE '172.1[6-9].%' OR IP.IP_Addresses0 LIKE '172.2[0-9].%' OR IP.IP_Addresses0 LIKE '172.3[0-1].%' THEN 2
+             WHEN IP.IP_Addresses0 LIKE '192.168.%' THEN 3
+             ELSE 4 END, -- Prioritize private IPs
+        IP.IP_Addresses0
+) AS IPADDR
+GROUP BY
+    SYS.Netbios_Name0,
+    BIOS.SerialNumber0,
+    CS.Model0,
+    CS.Manufacturer0,
+    OS.Caption0,
+    OS.Version0,
+    OS.BuildNumber0,
+    SYS.User_Name0,
+    SYS.Resource_Domain_OR_Workgr0,
+    SYS.ResourceID,
+    IPADDR.IP_Addresses0,
+    CASE 
+        WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
+        WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
+        WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
+        ELSE 'Physical'
+    END
+ORDER BY
+    SYS.Netbios_Name0;
