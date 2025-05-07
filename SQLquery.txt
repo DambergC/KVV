@@ -6,8 +6,6 @@ SELECT
     OS.Caption0 AS 'Operating System',
     OS.Version0 AS 'OS Version',
     OS.BuildNumber0 AS 'Build Number',
-    -- Alternative way to get IPv4 address
-    IPADDR.IP_Addresses0 AS 'IPv4 Address',
     CASE 
         WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
         WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
@@ -18,14 +16,11 @@ SELECT
     SYS.User_Name0 AS 'Last Logon User',
     SYS.Resource_Domain_OR_Workgr0 AS 'Domain',
     STRING_AGG(vru.Mail0, '; ') AS 'User Emails',
-    (SELECT STRING_AGG(BG.Name, '; ')
-     FROM v_RA_System_IPSubnets SYSIP
-     JOIN vSMS_Boundary B ON 
-        (B.BoundaryType = 0 AND SYSIP.IP_Subnets0 = B.Value)
-     JOIN vSMS_BoundaryGroupMembers BGM ON B.BoundaryID = BGM.BoundaryID
-     JOIN v_BoundaryGroup BG ON BGM.GroupID = BG.GroupID
-     WHERE SYSIP.ResourceID = SYS.ResourceID
-    ) AS 'Boundary Groups'
+    IPADDR.IP_Addresses0 AS 'IPv4 Address',
+    -- Include BoundaryName, BoundaryValue, and BoundaryGroupName
+    bginfo.BoundaryName AS 'Boundary Name',
+    bginfo.BoundaryValue AS 'Boundary Value',
+    bginfo.BoundaryGroupName AS 'Boundary Group Name'
 FROM
     v_R_System AS SYS
 JOIN
@@ -57,6 +52,36 @@ OUTER APPLY (
              ELSE 4 END, -- Prioritize private IPs
         IP.IP_Addresses0
 ) AS IPADDR
+-- Subquery to map Boundary Name, Boundary Value, and Boundary Group Name
+OUTER APPLY (
+    SELECT DISTINCT 
+        bg.GroupID,
+        bg.Name AS 'BoundaryGroupName',
+        b.DisplayName AS 'BoundaryName',
+        b.Value AS 'BoundaryValue'
+    FROM 
+        vSMS_Boundary b
+    JOIN 
+        vSMS_BoundaryGroupMembers bgm ON b.BoundaryID = bgm.BoundaryID
+    JOIN 
+        vSMS_BoundaryGroup bg ON bgm.GroupID = bg.GroupID
+    WHERE
+        b.BoundaryType = 3 AND -- IP Address Range
+        (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 4)) * 16777216) +
+        (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 3)) * 65536) +
+        (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 2)) * 256) +
+         CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 1))
+        BETWEEN
+        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 4)) * 16777216) +
+        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 3)) * 65536) +
+        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 2)) * 256) +
+         CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 1))
+        AND
+        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 4)) * 16777216) +
+        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 3)) * 65536) +
+        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 2)) * 256) +
+         CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 1))
+) AS bginfo
 WHERE
     CASE 
         WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
@@ -78,6 +103,9 @@ GROUP BY
     SYS.Resource_Domain_OR_Workgr0,
     SYS.ResourceID,
     IPADDR.IP_Addresses0,
+    bginfo.BoundaryName,
+    bginfo.BoundaryValue,
+    bginfo.BoundaryGroupName,
     CASE 
         WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
         WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
