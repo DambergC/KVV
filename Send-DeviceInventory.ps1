@@ -21,6 +21,8 @@ $logfilename = $xml.Configuration.Logfile.Name
 $logfilePath = $xml.Configuration.Logfile.Path
 $logfile = $logfilePath+"\"+$logfilename
 
+$today = get-date -Format yyyy-MM-dd
+
 function Write-Log
 {
 Param ([string]$LogString)
@@ -128,10 +130,10 @@ $query = "SELECT
     END AS 'Device Type',
     STRING_AGG(vru.Name0, ', ') AS 'Primary_Users',
     SYS.User_Name0 AS 'Last_Logon_User',
+    SYS.Last_Logon_Timestamp0 AS 'Last_Logon_Time', -- Added Last_Logon_Time
     SYS.Resource_Domain_OR_Workgr0 AS 'Domain',
     STRING_AGG(vru.Mail0, '; ') AS 'User_Emails',
     IPADDR.IP_Addresses0 AS 'IPv4_Address',
-    -- Include BoundaryName, BoundaryValue, and BoundaryGroupName
     bginfo.BoundaryName AS 'Boundary_Name',
     bginfo.BoundaryValue AS 'Boundary_Value',
     bginfo.BoundaryGroupName AS 'Boundary_Group_Name'
@@ -152,7 +154,9 @@ LEFT JOIN
 LEFT JOIN 
     v_R_User vru 
     ON upm.UserResourceID = vru.ResourceID
--- Join to get IPv4 address
+LEFT JOIN
+    v_R_User LLT -- Joining with LastLogon table
+    ON SYS.ResourceID = LLT.ResourceID
 OUTER APPLY (
     SELECT TOP 1 IP.IP_Addresses0 
     FROM v_RA_System_IPAddresses IP 
@@ -166,7 +170,6 @@ OUTER APPLY (
              ELSE 4 END, -- Prioritize private IPs
         IP.IP_Addresses0
 ) AS IPADDR
--- Subquery to map Boundary Name, Boundary Value, and Boundary Group Name
 OUTER APPLY (
     SELECT DISTINCT 
         bg.GroupID,
@@ -216,6 +219,7 @@ GROUP BY
     OS.Version0,
     OS.BuildNumber0,
     SYS.User_Name0,
+    sys.Last_Logon_Timestamp0, -- Grouping by Last_Logon_Time
     SYS.Resource_Domain_OR_Workgr0,
     SYS.ResourceID,
     IPADDR.IP_Addresses0,
@@ -251,6 +255,7 @@ foreach ($row in $data)
     $object | Add-Member -MemberType NoteProperty -Name 'Build Number' -Value $row.Build_Number
     #$object | Add-Member -MemberType NoteProperty -Name 'Device Type' -Value $row.'Device Type'
     $object | Add-Member -MemberType NoteProperty -Name 'Last Logon User' -Value $row.Last_logon_user
+    $object | Add-Member -MemberType NoteProperty -Name 'Last Logon Time' -Value $row.Last_logon_Time
     #$object | Add-Member -MemberType NoteProperty -Name 'Domain' -Value $row.Domain
     #$object | Add-Member -MemberType NoteProperty -Name 'User Email(s)' -Value $row.User_Emails
     $object | Add-Member -MemberType NoteProperty -Name 'IPv4 Address' -Value $row.IPv4_Address
@@ -267,20 +272,22 @@ foreach ($row in $data)
 
 #region Script part 2 Create the html-file to be distributed
 
-New-HTML -TitleText "Patchfönster- Kriminalvården" -FilePath $HTMLFileSavePath -ShowHTML -Online {
+# New-HTML -TitleText "Patchfönster- Kriminalvården" -FilePath $HTMLFileSavePath -ShowHTML -Online
+
+New-HTML -TitleText "Deviceinventering - Kriminalvården" -Online -FilePath $HTMLFileSavePath -ShowHTML {
 	
 	New-HTMLHeader {
-		New-HTMLSection -Invisible {
-			New-HTMLPanel -Invisible {
-				New-HTMLText -Text "Kriminalvården - Patchfönster" -FontSize 35 -Color Darkblue -FontFamily Arial -Alignment center
+		New-HTMLSection -HeaderText 'Kriminalvården IT Arbetsplats' -HeaderTextSize 35 -BackgroundColor lightblue -HeaderTextColor Darkblue {
+			New-HTMLPanel -BackgroundColor lightblue {
+				New-HTMLText -Text "Status Fysiska datorer $today från databasen för ConfigMgr" -FontSize 25 -Color Darkblue -FontFamily Arial -Alignment center -BackGroundColor lightblue
 				New-HTMLHorizontalLine
 			}
 		}
 	}
 	
-	New-HTMLSection -Invisible -Title "Maintenance Windows $filedate"{
+	New-HTMLSection -Title "Sorterings- och exportbar data" -HeaderTextSize 20 -HeaderTextColor darkblue{
 		
-		New-HTMLTable -DataTable $resultColl -PagingLength 35 -Style compact
+		New-HTMLTable -DataTable $resultColl -PagingLength 35 -AutoSize -Style nowrap
 		
 	}
 	
@@ -303,13 +310,11 @@ New-HTML -TitleText "Patchfönster- Kriminalvården" -FilePath $HTMLFileSavePath
 
 #Region CSS and HTML for mail thru Send-MailKitMessage
 
-
+$content = Get-Content -Path $HTMLFileSavePath
 
 #endregion
 
 #Region HTML Mail
-
-
 
 $Body = @"
 
@@ -317,7 +322,7 @@ $Body = @"
 <html>
 <head>
 <meta charset="utf-8">
-<title>Server Mainenance Windows - Kriminalvården</title>
+<title>SFysiska datorer ConfigMgr - Kriminalvården</title>
 <style>
 
     th {
@@ -379,12 +384,8 @@ $Body = @"
 </head>
 
 <body>
-	<p><h1>Server Maintenance Windows - List</h1></p> 
-	<p>Bifogad fil innehåller servrar från collection $collectionname.<br><br>
-med fönster mellan $patchtuesdayThisMonth och $patchtuesdayNextMonth<br>
-<p>Se bifogad fil. Kom ihåg att kopiera planen till<br>
-\\kvv.se\dokument\ProjektKVS\IT_Enheten\ITIL Processer\Change\Winpatchar
-</p>
+	<p><h1>Inventering - fysiska klienter - Kriminalvården</h1></p> 
+	<p>Biforgade filer innehåller dagsaktuell data from CM_KV1 databasen kopplad till ConfigMgr.<br><br>
 <hr>
 </p> 
 	<p>Report created $((Get-Date).ToString()) from <b><i>$($Env:Computername)</i></b></p>
@@ -397,7 +398,6 @@ med fönster mellan $patchtuesdayThisMonth och $patchtuesdayNextMonth<br>
  
 
 "@
-
 
 
 
