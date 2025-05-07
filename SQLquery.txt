@@ -1,26 +1,26 @@
 SELECT
-    SYS.Netbios_Name0 AS 'Device Name',
-    BIOS.SerialNumber0 AS 'Serial Number',
+    SYS.Netbios_Name0 AS 'Device_Name',
+    BIOS.SerialNumber0 AS 'Serial_Number',
     CS.Model0 AS 'Model',
     CS.Manufacturer0 AS 'Manufacturer',
-    OS.Caption0 AS 'Operating System',
-    OS.Version0 AS 'OS Version',
-    OS.BuildNumber0 AS 'Build Number',
+    OS.Caption0 AS 'Operating_System',
+    OS.Version0 AS 'OS_Version',
+    OS.BuildNumber0 AS 'Build_Number',
     CASE 
         WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
         WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
         WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
         ELSE 'Physical'
     END AS 'Device Type',
-    STRING_AGG(vru.Name0, ', ') AS 'Primary Users',
-    SYS.User_Name0 AS 'Last Logon User',
+    STRING_AGG(vru.Name0, ', ') AS 'Primary_Users',
+    SYS.User_Name0 AS 'Last_Logon_User',
     SYS.Resource_Domain_OR_Workgr0 AS 'Domain',
-    STRING_AGG(vru.Mail0, '; ') AS 'User Emails',
-    IPADDR.IP_Addresses0 AS 'IPv4 Address',
+    STRING_AGG(vru.Mail0, '; ') AS 'User_Emails',
+    IPADDR.IP_Addresses0 AS 'IPv4_Address',
     -- Include BoundaryName, BoundaryValue, and BoundaryGroupName
-    bginfo.BoundaryName AS 'Boundary Name',
-    bginfo.BoundaryValue AS 'Boundary Value',
-    bginfo.BoundaryGroupName AS 'Boundary Group Name'
+    bginfo.BoundaryName AS 'Boundary_Name',
+    bginfo.BoundaryValue AS 'Boundary_Value',
+    bginfo.BoundaryGroupName AS 'Boundary_Group_Name'
 FROM
     v_R_System AS SYS
 JOIN
@@ -91,6 +91,8 @@ WHERE
     END = 'Physical' -- Filter for physical machines
     AND (OS.Caption0 LIKE '%Windows 10%' OR OS.Caption0 LIKE '%Windows 11%') -- Include only Windows 10 and Windows 11
     AND OS.Caption0 NOT LIKE '%Server%' -- Exclude servers
+    AND SYS.Netbios_Name0 NOT LIKE 'WSDP%' -- Exclude devices starting with WSDP
+    AND bginfo.BoundaryGroupName NOT LIKE 'CL - Server Net%' -- Exclude specific boundary names
 GROUP BY
     SYS.Netbios_Name0,
     BIOS.SerialNumber0,
