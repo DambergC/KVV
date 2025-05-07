@@ -64,6 +64,8 @@ WHERE
         WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
         ELSE 'Physical'
     END = 'Physical' -- Filter for physical machines
+    AND (OS.Caption0 LIKE '%Windows 10%' OR OS.Caption0 LIKE '%Windows 11%') -- Include only Windows 10 and Windows 11
+    AND OS.Caption0 NOT LIKE '%Server%' -- Exclude servers
 GROUP BY
     SYS.Netbios_Name0,
     BIOS.SerialNumber0,
