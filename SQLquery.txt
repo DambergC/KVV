@@ -14,10 +14,10 @@ SELECT
     END AS 'Device Type',
     STRING_AGG(vru.Name0, ', ') AS 'Primary_Users',
     SYS.User_Name0 AS 'Last_Logon_User',
+    SYS.Last_Logon_Timestamp0 AS 'Last_Logon_Time', -- Added Last_Logon_Time
     SYS.Resource_Domain_OR_Workgr0 AS 'Domain',
     STRING_AGG(vru.Mail0, '; ') AS 'User_Emails',
     IPADDR.IP_Addresses0 AS 'IPv4_Address',
-    -- Include BoundaryName, BoundaryValue, and BoundaryGroupName
     bginfo.BoundaryName AS 'Boundary_Name',
     bginfo.BoundaryValue AS 'Boundary_Value',
     bginfo.BoundaryGroupName AS 'Boundary_Group_Name'
@@ -38,7 +38,9 @@ LEFT JOIN
 LEFT JOIN 
     v_R_User vru 
     ON upm.UserResourceID = vru.ResourceID
--- Join to get IPv4 address
+LEFT JOIN
+    v_R_User LLT -- Joining with LastLogon table
+    ON SYS.ResourceID = LLT.ResourceID
 OUTER APPLY (
     SELECT TOP 1 IP.IP_Addresses0 
     FROM v_RA_System_IPAddresses IP 
@@ -52,7 +54,6 @@ OUTER APPLY (
              ELSE 4 END, -- Prioritize private IPs
         IP.IP_Addresses0
 ) AS IPADDR
--- Subquery to map Boundary Name, Boundary Value, and Boundary Group Name
 OUTER APPLY (
     SELECT DISTINCT 
         bg.GroupID,
@@ -102,6 +103,7 @@ GROUP BY
     OS.Version0,
     OS.BuildNumber0,
     SYS.User_Name0,
+    sys.Last_Logon_Timestamp0, -- Grouping by Last_Logon_Time
     SYS.Resource_Domain_OR_Workgr0,
     SYS.ResourceID,
     IPADDR.IP_Addresses0,
