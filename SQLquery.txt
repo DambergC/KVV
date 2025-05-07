@@ -57,6 +57,13 @@ OUTER APPLY (
              ELSE 4 END, -- Prioritize private IPs
         IP.IP_Addresses0
 ) AS IPADDR
+WHERE
+    CASE 
+        WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
+        WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
+        WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
+        ELSE 'Physical'
+    END = 'Physical' -- Filter for physical machines
 GROUP BY
     SYS.Netbios_Name0,
     BIOS.SerialNumber0,
