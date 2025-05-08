@@ -1,0 +1,25 @@
+// RegKeyToMOF by Mark Cochrane (with help from Skissinger, SteveRac, Jonas Hettich, Kent Agerlund & Barker)
+// this section tells the inventory agent what to report to the server
+// 5/8/2025 2:57:15 PM
+
+#pragma namespace ("\\\\.\\root\\cimv2\\SMS")
+#pragma deleteclass("SCCMItems", NOFAIL)
+[SMS_Report(TRUE),SMS_Group_Name("SCCMItems"),SMS_Class_ID("SCCMItems"),
+SMS_Context_1("__ProviderArchitecture=32|uint32"),
+SMS_Context_2("__RequiredArchitecture=true|boolean")]
+Class SCCMItems: SMS_Class_Template
+{
+[SMS_Report(TRUE),key] string KeyName;
+[SMS_Report(TRUE)] String OUpath;
+};
+
+#pragma namespace ("\\\\.\\root\\cimv2\\SMS")
+#pragma deleteclass("SCCMItems_64", NOFAIL)
+[SMS_Report(TRUE),SMS_Group_Name("SCCMItems64"),SMS_Class_ID("SCCMItems64"),
+SMS_Context_1("__ProviderArchitecture=64|uint32"),
+SMS_Context_2("__RequiredArchitecture=true|boolean")]
+Class SCCMItems_64 : SMS_Class_Template
+{
+[SMS_Report(TRUE),key] string KeyName;
+[SMS_Report(TRUE)] String OUpath;
+};
