@@ -136,7 +136,8 @@ $query = "SELECT
     IPADDR.IP_Addresses0 AS 'IPv4_Address',
     bginfo.BoundaryName AS 'Boundary_Name',
     bginfo.BoundaryValue AS 'Boundary_Value',
-    bginfo.BoundaryGroupName AS 'Boundary_Group_Name'
+    bginfo.BoundaryGroupName AS 'Boundary_Group_Name',
+    SCCM.OUpath00 AS 'OU_Path' -- Included OUpath00
 FROM
     v_R_System AS SYS
 JOIN
@@ -157,6 +158,9 @@ LEFT JOIN
 LEFT JOIN
     v_R_User LLT -- Joining with LastLogon table
     ON SYS.ResourceID = LLT.ResourceID
+LEFT JOIN 
+    dbo.SCCMItems64_DATA AS SCCM -- Joining with SCCMItems64_DATA table
+    ON SYS.ResourceID = SCCM.MachineID -- Correctly connecting MachineID to ResourceID
 OUTER APPLY (
     SELECT TOP 1 IP.IP_Addresses0 
     FROM v_RA_System_IPAddresses IP 
@@ -226,6 +230,7 @@ GROUP BY
     bginfo.BoundaryName,
     bginfo.BoundaryValue,
     bginfo.BoundaryGroupName,
+    SCCM.OUpath00, -- Grouping by OUpath00
     CASE 
         WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
         WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
@@ -263,6 +268,8 @@ foreach ($row in $data)
     $object | Add-Member -MemberType NoteProperty -Name 'Boundary Group Name' -Value $row.Boundary_Group_Name
     #$object | Add-Member -MemberType NoteProperty -Name 'Boundary Value' -Value $row.Boundary_Value
     $object | Add-Member -MemberType NoteProperty -Name 'Primary User(s)' -Value $row.Primary_users
+
+    $object | Add-Member -MemberType NoteProperty -Name 'Type' -Value $row.OU_path
 
     $resultColl += $object
 }
