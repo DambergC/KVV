@@ -1,0 +1,114 @@
+SELECT
+    SYS.Netbios_Name0 AS 'Device_Name',
+    BIOS.SerialNumber0 AS 'Serial_Number',
+    CS.Model0 AS 'Model',
+    CS.Manufacturer0 AS 'Manufacturer',
+    OS.Caption0 AS 'Operating_System',
+    OS.Version0 AS 'OS_Version',
+    OS.BuildNumber0 AS 'Build_Number',
+    DeviceType.Device_Type,
+    STRING_AGG(vru.Name0, ', ') AS 'Primary_Users',
+    SYS.User_Name0 AS 'Last_Logon_User',
+    SYS.Last_Logon_Timestamp0 AS 'Last_Logon_Time', 
+    SYS.Resource_Domain_OR_Workgr0 AS 'Domain',
+    STRING_AGG(vru.Mail0, '; ') AS 'User_Emails',
+    IPADDR.IP_Addresses0 AS 'IPv4_Address',
+    bginfo.BoundaryName AS 'Boundary_Name',
+    bginfo.BoundaryValue AS 'Boundary_Value',
+    bginfo.BoundaryGroupName AS 'Boundary_Group_Name',
+    SCCM.OUpath00 AS 'OU_Path',
+    -- New columns for software presence
+    CASE WHEN chrome.ResourceID IS NOT NULL THEN 'googleChrome' ELSE '---' END AS [Google Chrome],
+    CASE WHEN notepad.ResourceID IS NOT NULL THEN 'Notepad++' ELSE '---' END AS [Notepad++],
+    CASE WHEN zip.ResourceID IS NOT NULL THEN '7zip' ELSE '---' END AS [7-Zip]
+FROM
+    v_R_System AS SYS
+    JOIN v_GS_COMPUTER_SYSTEM AS CS ON SYS.ResourceID = CS.ResourceID
+    JOIN v_GS_PC_BIOS AS BIOS ON SYS.ResourceID = BIOS.ResourceID
+    JOIN v_GS_OPERATING_SYSTEM AS OS ON SYS.ResourceID = OS.ResourceID
+    OUTER APPLY (
+        SELECT
+            CASE
+                WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
+                WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
+                WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
+                ELSE 'Physical'
+            END AS Device_Type
+    ) AS DeviceType
+    LEFT JOIN v_UsersPrimaryMachines upm ON SYS.ResourceID = upm.MachineID
+    LEFT JOIN v_R_User vru ON upm.UserResourceID = vru.ResourceID
+    LEFT JOIN dbo.SCCMItems64_DATA SCCM ON SYS.ResourceID = SCCM.MachineID
+    OUTER APPLY (
+        SELECT TOP 1 IP.IP_Addresses0 
+        FROM v_RA_System_IPAddresses IP 
+        WHERE IP.ResourceID = SYS.ResourceID 
+          AND IP.IP_Addresses0 NOT LIKE '%:%'
+          AND IP.IP_Addresses0 NOT LIKE '169.254.%'
+        ORDER BY 
+            CASE
+                WHEN IP.IP_Addresses0 LIKE '10.%' THEN 1
+                WHEN IP.IP_Addresses0 LIKE '172.1[6-9].%' OR IP.IP_Addresses0 LIKE '172.2[0-9].%' OR IP.IP_Addresses0 LIKE '172.3[0-1].%' THEN 2
+                WHEN IP.IP_Addresses0 LIKE '192.168.%' THEN 3
+                ELSE 4
+            END,
+            IP.IP_Addresses0
+    ) AS IPADDR
+    OUTER APPLY (
+        SELECT DISTINCT 
+            bg.GroupID,
+            bg.Name AS 'BoundaryGroupName',
+            b.DisplayName AS 'BoundaryName',
+            b.Value AS 'BoundaryValue'
+        FROM 
+            vSMS_Boundary b
+            JOIN vSMS_BoundaryGroupMembers bgm ON b.BoundaryID = bgm.BoundaryID
+            JOIN vSMS_BoundaryGroup bg ON bgm.GroupID = bg.GroupID
+        WHERE
+            b.BoundaryType = 3 AND
+            (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 4)) * 16777216) +
+            (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 3)) * 65536) +
+            (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 2)) * 256) +
+             CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 1))
+            BETWEEN
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 4)) * 16777216) +
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 3)) * 65536) +
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 2)) * 256) +
+             CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 1))
+            AND
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 4)) * 16777216) +
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 3)) * 65536) +
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 2)) * 256) +
+             CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 1))
+    ) AS bginfo
+    -- New LEFT JOINs for software presence
+    LEFT JOIN (SELECT ResourceID FROM v_GS_ADD_REMOVE_PROGRAMS WHERE DisplayName0 LIKE '%Google Chrome%') AS chrome ON SYS.ResourceID = chrome.ResourceID
+    LEFT JOIN (SELECT ResourceID FROM v_GS_ADD_REMOVE_PROGRAMS WHERE DisplayName0 LIKE '%Notepad++%') AS notepad ON SYS.ResourceID = notepad.ResourceID
+    LEFT JOIN (SELECT ResourceID FROM v_GS_ADD_REMOVE_PROGRAMS WHERE DisplayName0 LIKE '%7-Zip%') AS zip ON SYS.ResourceID = zip.ResourceID
+WHERE
+    DeviceType.Device_Type = 'Physical'
+    AND (OS.Caption0 LIKE '%Windows 10%' OR OS.Caption0 LIKE '%Windows 11%')
+    AND OS.Caption0 NOT LIKE '%Server%'
+    AND SYS.Netbios_Name0 NOT LIKE 'WSDP%'
+    AND (bginfo.BoundaryGroupName IS NULL OR bginfo.BoundaryGroupName NOT LIKE 'CL - Server Net%')
+GROUP BY
+    SYS.Netbios_Name0,
+    BIOS.SerialNumber0,
+    CS.Model0,
+    CS.Manufacturer0,
+    OS.Caption0,
+    OS.Version0,
+    OS.BuildNumber0,
+    SYS.User_Name0,
+    SYS.Last_Logon_Timestamp0,
+    SYS.Resource_Domain_OR_Workgr0,
+    IPADDR.IP_Addresses0,
+    bginfo.BoundaryName,
+    bginfo.BoundaryValue,
+    bginfo.BoundaryGroupName,
+    SCCM.OUpath00,
+    DeviceType.Device_Type,
+    chrome.ResourceID,
+    notepad.ResourceID,
+    zip.ResourceID
+ORDER BY
+    SYS.Netbios_Name0;
