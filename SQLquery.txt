@@ -14,14 +14,14 @@ SELECT
     END AS 'Device Type',
     STRING_AGG(vru.Name0, ', ') AS 'Primary_Users',
     SYS.User_Name0 AS 'Last_Logon_User',
-    SYS.Last_Logon_Timestamp0 AS 'Last_Logon_Time', -- Added Last_Logon_Time
+    SYS.Last_Logon_Timestamp0 AS 'Last_Logon_Time', 
     SYS.Resource_Domain_OR_Workgr0 AS 'Domain',
     STRING_AGG(vru.Mail0, '; ') AS 'User_Emails',
     IPADDR.IP_Addresses0 AS 'IPv4_Address',
     bginfo.BoundaryName AS 'Boundary_Name',
     bginfo.BoundaryValue AS 'Boundary_Value',
     bginfo.BoundaryGroupName AS 'Boundary_Group_Name',
-    SCCM.OUpath00 AS 'OU_Path' -- Included OUpath00
+    SCCM.OUpath00 AS 'OU_Path'
 FROM
     v_R_System AS SYS
 JOIN
@@ -40,22 +40,22 @@ LEFT JOIN
     v_R_User vru 
     ON upm.UserResourceID = vru.ResourceID
 LEFT JOIN
-    v_R_User LLT -- Joining with LastLogon table
+    v_R_User LLT
     ON SYS.ResourceID = LLT.ResourceID
 LEFT JOIN 
-    dbo.SCCMItems64_DATA AS SCCM -- Joining with SCCMItems64_DATA table
-    ON SYS.ResourceID = SCCM.MachineID -- Correctly connecting MachineID to ResourceID
+    dbo.SCCMItems64_DATA AS SCCM
+    ON SYS.ResourceID = SCCM.MachineID
 OUTER APPLY (
     SELECT TOP 1 IP.IP_Addresses0 
     FROM v_RA_System_IPAddresses IP 
     WHERE IP.ResourceID = SYS.ResourceID 
-    AND IP.IP_Addresses0 NOT LIKE '%:%' -- Filter out IPv6
-    AND IP.IP_Addresses0 NOT LIKE '169.254.%' -- Filter out APIPA addresses
+    AND IP.IP_Addresses0 NOT LIKE '%:%'
+    AND IP.IP_Addresses0 NOT LIKE '169.254.%'
     ORDER BY 
         CASE WHEN IP.IP_Addresses0 LIKE '10.%' THEN 1
              WHEN IP.IP_Addresses0 LIKE '172.1[6-9].%' OR IP.IP_Addresses0 LIKE '172.2[0-9].%' OR IP.IP_Addresses0 LIKE '172.3[0-1].%' THEN 2
              WHEN IP.IP_Addresses0 LIKE '192.168.%' THEN 3
-             ELSE 4 END, -- Prioritize private IPs
+             ELSE 4 END,
         IP.IP_Addresses0
 ) AS IPADDR
 OUTER APPLY (
@@ -71,7 +71,7 @@ OUTER APPLY (
     JOIN 
         vSMS_BoundaryGroup bg ON bgm.GroupID = bg.GroupID
     WHERE
-        b.BoundaryType = 3 AND -- IP Address Range
+        b.BoundaryType = 3 AND
         (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 4)) * 16777216) +
         (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 3)) * 65536) +
         (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 2)) * 256) +
@@ -93,11 +93,11 @@ WHERE
         WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
         WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
         ELSE 'Physical'
-    END = 'Physical' -- Filter for physical machines
-    AND (OS.Caption0 LIKE '%Windows 10%' OR OS.Caption0 LIKE '%Windows 11%') -- Include only Windows 10 and Windows 11
-    AND OS.Caption0 NOT LIKE '%Server%' -- Exclude servers
-    AND SYS.Netbios_Name0 NOT LIKE 'WSDP%' -- Exclude devices starting with WSDP
-    AND bginfo.BoundaryGroupName NOT LIKE 'CL - Server Net%' -- Exclude specific boundary names
+    END = 'Physical'
+    AND (OS.Caption0 LIKE '%Windows 10%' OR OS.Caption0 LIKE '%Windows 11%')
+    AND OS.Caption0 NOT LIKE '%Server%'
+    AND SYS.Netbios_Name0 NOT LIKE 'WSDP%'
+    AND bginfo.BoundaryGroupName NOT LIKE 'CL - Server Net%'
 GROUP BY
     SYS.Netbios_Name0,
     BIOS.SerialNumber0,
@@ -107,14 +107,14 @@ GROUP BY
     OS.Version0,
     OS.BuildNumber0,
     SYS.User_Name0,
-    sys.Last_Logon_Timestamp0, -- Grouping by Last_Logon_Time
+    sys.Last_Logon_Timestamp0,
     SYS.Resource_Domain_OR_Workgr0,
     SYS.ResourceID,
     IPADDR.IP_Addresses0,
     bginfo.BoundaryName,
     bginfo.BoundaryValue,
     bginfo.BoundaryGroupName,
-    SCCM.OUpath00, -- Grouping by OUpath00
+    SCCM.OUpath00,
     CASE 
         WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
         WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
