@@ -17,6 +17,15 @@ SELECT
     bginfo.BoundaryValue AS 'Boundary_Value',
     bginfo.BoundaryGroupName AS 'Boundary_Group_Name',
     SCCM.OUpath00 AS 'OU_Path',
+
+     SCCM.OUpath00 AS 'OU_Path',
+     CASE
+         WHEN SCCM.OUpath00 LIKE '%Delad enhet%' THEN 'DMITA'
+         WHEN SCCM.OUpath00 LIKE '%OU=Windows 11 MITAv2%' THEN 'MITA'
+         WHEN SCCM.OUpath00 LIKE '%SMP%' THEN 'MITA'
+         WHEN SCCM.OUpath00 LIKE '%T1%' THEN 'T1'
+     END AS [Classification],
+
     -- New columns for software presence
     CASE WHEN chrome.ResourceID IS NOT NULL THEN 'googleChrome' ELSE '---' END AS [Google Chrome],
     CASE WHEN notepad.ResourceID IS NOT NULL THEN 'Notepad++' ELSE '---' END AS [Notepad++],
