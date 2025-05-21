@@ -1,0 +1,51 @@
+// RegKeyToMOF by Mark Cochrane (with help from Skissinger, SteveRac, Jonas Hettich, Kent Agerlund & Barker)
+// this section tells the inventory agent what to collect
+// 5/21/2025 11:19:11 AM
+
+#pragma namespace ("\\\\.\\root\\cimv2")
+#pragma deleteclass("SCCMInventoryItems", NOFAIL)
+[DYNPROPS]
+Class SCCMInventoryItems
+{
+[key] string KeyName;
+String Department;
+String ExtraPartition;
+String JobTitle;
+String Manager;
+String OUPath;
+};
+
+[DYNPROPS]
+Instance of SCCMInventoryItems
+{
+KeyName="RegKeyToMOF_32";
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|Department"),Dynamic,Provider("RegPropProv")] Department;
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|ExtraPartition"),Dynamic,Provider("RegPropProv")] ExtraPartition;
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|JobTitle"),Dynamic,Provider("RegPropProv")] JobTitle;
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|Manager"),Dynamic,Provider("RegPropProv")] Manager;
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|OUPath"),Dynamic,Provider("RegPropProv")] OUPath;
+};
+
+#pragma namespace ("\\\\.\\root\\cimv2")
+#pragma deleteclass("SCCMInventoryItems_64", NOFAIL)
+[DYNPROPS]
+Class SCCMInventoryItems_64
+{
+[key] string KeyName;
+String Department;
+String ExtraPartition;
+String JobTitle;
+String Manager;
+String OUPath;
+};
+
+[DYNPROPS]
+Instance of SCCMInventoryItems_64
+{
+KeyName="RegKeyToMOF_64";
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|Department"),Dynamic,Provider("RegPropProv")] Department;
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|ExtraPartition"),Dynamic,Provider("RegPropProv")] ExtraPartition;
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|JobTitle"),Dynamic,Provider("RegPropProv")] JobTitle;
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|Manager"),Dynamic,Provider("RegPropProv")] Manager;
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMInventoryItems|OUPath"),Dynamic,Provider("RegPropProv")] OUPath;
+};
