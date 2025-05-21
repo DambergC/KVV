@@ -1,0 +1,33 @@
+// RegKeyToMOF by Mark Cochrane (with help from Skissinger, SteveRac, Jonas Hettich, Kent Agerlund & Barker)
+// this section tells the inventory agent what to report to the server
+// 5/21/2025 11:19:11 AM
+
+#pragma namespace ("\\\\.\\root\\cimv2\\SMS")
+#pragma deleteclass("SCCMInventoryItems", NOFAIL)
+[SMS_Report(TRUE),SMS_Group_Name("SCCMInventoryItems"),SMS_Class_ID("SCCMInventoryItems"),
+SMS_Context_1("__ProviderArchitecture=32|uint32"),
+SMS_Context_2("__RequiredArchitecture=true|boolean")]
+Class SCCMInventoryItems: SMS_Class_Template
+{
+[SMS_Report(TRUE),key] string KeyName;
+[SMS_Report(TRUE)] String Department;
+[SMS_Report(TRUE)] String ExtraPartition;
+[SMS_Report(TRUE)] String JobTitle;
+[SMS_Report(TRUE)] String Manager;
+[SMS_Report(TRUE)] String OUPath;
+};
+
+#pragma namespace ("\\\\.\\root\\cimv2\\SMS")
+#pragma deleteclass("SCCMInventoryItems_64", NOFAIL)
+[SMS_Report(TRUE),SMS_Group_Name("SCCMInventoryItems64"),SMS_Class_ID("SCCMInventoryItems64"),
+SMS_Context_1("__ProviderArchitecture=64|uint32"),
+SMS_Context_2("__RequiredArchitecture=true|boolean")]
+Class SCCMInventoryItems_64 : SMS_Class_Template
+{
+[SMS_Report(TRUE),key] string KeyName;
+[SMS_Report(TRUE)] String Department;
+[SMS_Report(TRUE)] String ExtraPartition;
+[SMS_Report(TRUE)] String JobTitle;
+[SMS_Report(TRUE)] String Manager;
+[SMS_Report(TRUE)] String OUPath;
+};
