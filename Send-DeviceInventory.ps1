@@ -75,6 +75,17 @@ $logFileName = $xml.Configuration.Logfile.Name
 $logFilePath = $xml.Configuration.Logfile.Path
 $logFile = Join-Path -Path $logFilePath -ChildPath $logFileName
 
+# --- Early Log Write for Troubleshooting ---
+try {
+    $earlyLogMsg = "$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss') [INFO] Script startup: $scriptName"
+    Add-Content -Path $logFile -Value $earlyLogMsg
+    Add-Content -Path $logFile -Value "$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss') [INFO] Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)"
+    Add-Content -Path $logFile -Value "$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss') [INFO] Working directory: $(Get-Location)"
+    Add-Content -Path $logFile -Value "$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss') [INFO] Log file path: $logFile"
+} catch {
+    Write-Error "Early log write failed: $_"
+}
+
 $today = Get-Date -Format yyyy-MM-dd
 $monthName = (Get-Culture).DateTimeFormat.GetMonthName((Get-Date).Month)
 $year = (Get-Date).Year
@@ -223,6 +234,7 @@ function Test-ScriptVersion {
     if (-not [string]::IsNullOrEmpty($ConfigVersion) -and $ConfigVersion -ne $CurrentVersion) {
         Write-Log -LogString "Script version mismatch! Config expects v$ConfigVersion but script is v$CurrentVersion" -Severity "WARNING"
         return $false
+        write-host "False---"
     }
     return $true
 }
@@ -276,7 +288,7 @@ function Import-RequiredModule {
 }
 
 # Required modules
-$requiredModules = @("send-mailkitmessage", "PSWriteHTML", "PatchManagementSupportTools")
+$requiredModules = @("send-mailkitmessage", "PSWriteHTML", "PatchManagementSupportTools", "SQLPS")
 $allModulesLoaded = $true
 
 foreach ($module in $requiredModules) {
@@ -300,98 +312,180 @@ SELECT
     OS.Caption0 AS 'Operating_System',
     OS.Version0 AS 'OS_Version',
     OS.BuildNumber0 AS 'Build_Number',
-    CASE 
-        WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
-        WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
-        WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
-        ELSE 'Physical'
-    END AS 'Device Type',
+    DeviceType.Device_Type,
     STRING_AGG(vru.Name0, ', ') AS 'Primary_Users',
     SYS.User_Name0 AS 'Last_Logon_User',
-    SYS.Last_Logon_Timestamp0 AS 'Last_Logon_Time', 
+    SYS.Last_Logon_Timestamp0 AS 'Last_Logon_Time',
     SYS.Resource_Domain_OR_Workgr0 AS 'Domain',
     STRING_AGG(vru.Mail0, '; ') AS 'User_Emails',
     IPADDR.IP_Addresses0 AS 'IPv4_Address',
     bginfo.BoundaryName AS 'Boundary_Name',
     bginfo.BoundaryValue AS 'Boundary_Value',
     bginfo.BoundaryGroupName AS 'Boundary_Group_Name',
-    SCCM.OUpath00 AS 'OU_Path'
+    SCCM.Department00 AS 'Department',
+    SCCM.Extrapartition00 AS 'Partition',
+    SCCM.Jobtitle00 AS 'Jobtitel',
+    SCCM.Manager00 AS 'Manager',
+    SCCM.OUpath00 AS 'OU_Path',
+    CASE
+        WHEN SCCM.OUpath00 LIKE '%Delad enhet%' THEN 'DMITA'
+        WHEN SCCM.OUpath00 LIKE '%OU=Windows 11 MITAv2%' THEN 'MITA'
+        WHEN SCCM.OUpath00 LIKE '%SMP%' THEN 'MITA'
+        WHEN SCCM.OUpath00 LIKE '%T1%' THEN 'T1'
+        ELSE 'No info'
+    END AS [Classification],
+
+    -- Show actual DisplayName0 if software is present, otherwise '---'
+    ISNULL(camtasia.DisplayName0, '---') AS [camtasia],
+    ISNULL(bluebeam.DisplayName0, '---') AS [bluebeam],
+    ISNULL(mindmanager.DisplayName0, '---') AS [mindmanager],
+	ISNULL(msproject.DisplayName0, '---') AS [msproject],
+	ISNULL(msvisio.DisplayName0, '---') AS [msvisio],
+	ISNULL(stata.DisplayName0, '---') AS [stata],
+	ISNULL(enterprisearchitect.DisplayName0, '---') AS [enterprisearchitect],
+	ISNULL(philipsactiware.DisplayName0, '---') AS [philipsactiware],
+	ISNULL(adobeacrobat.DisplayName0, '---') AS [adobeacobat],
+	ISNULL(assa.DisplayName0, '---') AS [assa],
+	ISNULL(ibmspss.DisplayName0, '---') AS [ibmspss]
+
+	
+
 FROM
     v_R_System AS SYS
-JOIN
-    v_GS_COMPUTER_SYSTEM AS CS
-    ON SYS.ResourceID = CS.ResourceID
-JOIN
-    v_GS_PC_BIOS AS BIOS
-    ON SYS.ResourceID = BIOS.ResourceID
-JOIN
-    v_GS_OPERATING_SYSTEM AS OS
-    ON SYS.ResourceID = OS.ResourceID
-LEFT JOIN 
-    v_UsersPrimaryMachines upm 
-    ON SYS.ResourceID = upm.MachineID
-LEFT JOIN 
-    v_R_User vru 
-    ON upm.UserResourceID = vru.ResourceID
-LEFT JOIN
-    v_R_User LLT
-    ON SYS.ResourceID = LLT.ResourceID
-LEFT JOIN 
-    dbo.SCCMItems64_DATA AS SCCM
-    ON SYS.ResourceID = SCCM.MachineID
-OUTER APPLY (
-    SELECT TOP 1 IP.IP_Addresses0 
-    FROM v_RA_System_IPAddresses IP 
-    WHERE IP.ResourceID = SYS.ResourceID 
-    AND IP.IP_Addresses0 NOT LIKE '%:%'
-    AND IP.IP_Addresses0 NOT LIKE '169.254.%'
-    ORDER BY 
-        CASE WHEN IP.IP_Addresses0 LIKE '10.%' THEN 1
-             WHEN IP.IP_Addresses0 LIKE '172.1[6-9].%' OR IP.IP_Addresses0 LIKE '172.2[0-9].%' OR IP.IP_Addresses0 LIKE '172.3[0-1].%' THEN 2
-             WHEN IP.IP_Addresses0 LIKE '192.168.%' THEN 3
-             ELSE 4 END,
-        IP.IP_Addresses0
-) AS IPADDR
-OUTER APPLY (
-    SELECT DISTINCT 
-        bg.GroupID,
-        bg.Name AS 'BoundaryGroupName',
-        b.DisplayName AS 'BoundaryName',
-        b.Value AS 'BoundaryValue'
-    FROM 
-        vSMS_Boundary b
-    JOIN 
-        vSMS_BoundaryGroupMembers bgm ON b.BoundaryID = bgm.BoundaryID
-    JOIN 
-        vSMS_BoundaryGroup bg ON bgm.GroupID = bg.GroupID
-    WHERE
-        b.BoundaryType = 3 AND
-        (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 4)) * 16777216) +
-        (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 3)) * 65536) +
-        (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 2)) * 256) +
-         CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 1))
-        BETWEEN
-        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 4)) * 16777216) +
-        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 3)) * 65536) +
-        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 2)) * 256) +
-         CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 1))
-        AND
-        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 4)) * 16777216) +
-        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 3)) * 65536) +
-        (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 2)) * 256) +
-         CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 1))
-) AS bginfo
+    JOIN v_GS_COMPUTER_SYSTEM AS CS ON SYS.ResourceID = CS.ResourceID
+    JOIN v_GS_PC_BIOS AS BIOS ON SYS.ResourceID = BIOS.ResourceID
+    JOIN v_GS_OPERATING_SYSTEM AS OS ON SYS.ResourceID = OS.ResourceID
+    OUTER APPLY (
+        SELECT
+            CASE
+                WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
+                WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
+                WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
+                ELSE 'Physical'
+            END AS Device_Type
+    ) AS DeviceType
+    LEFT JOIN v_UsersPrimaryMachines upm ON SYS.ResourceID = upm.MachineID
+    LEFT JOIN v_R_User vru ON upm.UserResourceID = vru.ResourceID
+    LEFT JOIN dbo.SCCMInventoryItems64_DATA SCCM ON SYS.ResourceID = SCCM.MachineID
+    OUTER APPLY (
+        SELECT TOP 1 IP.IP_Addresses0
+        FROM v_RA_System_IPAddresses IP
+        WHERE IP.ResourceID = SYS.ResourceID
+          AND IP.IP_Addresses0 NOT LIKE '%:%'
+          AND IP.IP_Addresses0 NOT LIKE '169.254.%'
+        ORDER BY
+            CASE
+                WHEN IP.IP_Addresses0 LIKE '10.%' THEN 1
+                WHEN IP.IP_Addresses0 LIKE '172.1[6-9].%' OR IP.IP_Addresses0 LIKE '172.2[0-9].%' OR IP.IP_Addresses0 LIKE '172.3[0-1].%' THEN 2
+                WHEN IP.IP_Addresses0 LIKE '192.168.%' THEN 3
+                ELSE 4
+            END,
+            IP.IP_Addresses0
+    ) AS IPADDR
+    OUTER APPLY (
+        SELECT DISTINCT 
+            bg.GroupID,
+            bg.Name AS 'BoundaryGroupName',
+            b.DisplayName AS 'BoundaryName',
+            b.Value AS 'BoundaryValue'
+        FROM 
+            vSMS_Boundary b
+            JOIN vSMS_BoundaryGroupMembers bgm ON b.BoundaryID = bgm.BoundaryID
+            JOIN vSMS_BoundaryGroup bg ON bgm.GroupID = bg.GroupID
+        WHERE
+            b.BoundaryType = 3 AND
+            (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 4)) * 16777216) +
+            (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 3)) * 65536) +
+            (CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 2)) * 256) +
+             CONVERT(BIGINT, PARSENAME(IPADDR.IP_Addresses0, 1))
+            BETWEEN
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 4)) * 16777216) +
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 3)) * 65536) +
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 2)) * 256) +
+             CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, 1, CHARINDEX('-', b.Value) - 1), 1))
+            AND
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 4)) * 16777216) +
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 3)) * 65536) +
+            (CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 2)) * 256) +
+             CONVERT(BIGINT, PARSENAME(SUBSTRING(b.Value, CHARINDEX('-', b.Value) + 1, LEN(b.Value)), 1))
+    ) AS bginfo
+
+    -- LEFT JOINs for software presence, now retrieving DisplayName0
+    LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS_64
+        WHERE DisplayName0 LIKE '%Camtasia%'
+    ) AS camtasia ON SYS.ResourceID = camtasia.ResourceID
+
+    LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS_64
+        WHERE DisplayName0 LIKE '%Bluebeam%'
+    ) AS bluebeam ON SYS.ResourceID = bluebeam.ResourceID
+
+    LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS_64
+        WHERE DisplayName0 LIKE '%Mindmanager%'
+    ) AS mindmanager ON SYS.ResourceID = mindmanager.ResourceID
+
+	LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS_64
+        WHERE DisplayName0 LIKE '%Microsoft Project%'
+    ) AS msproject ON SYS.ResourceID = msproject.ResourceID
+
+		LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS_64
+        WHERE DisplayName0 LIKE '%Microsoft Visio%'
+    ) AS msvisio ON SYS.ResourceID = msvisio.ResourceID
+
+	
+		LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS_64
+        WHERE DisplayName0 LIKE '%stata%'
+    ) AS stata ON SYS.ResourceID = stata.ResourceID
+
+		
+		LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS_64
+        WHERE DisplayName0 LIKE '%Enterprise Architect%'
+    ) AS enterprisearchitect ON SYS.ResourceID = enterprisearchitect.ResourceID
+			
+		LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS
+        WHERE DisplayName0 LIKE '%Philips Actiware%'
+    ) AS philipsactiware ON SYS.ResourceID = philipsactiware.ResourceID
+				
+		LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS
+        where	DisplayName0 like '%Adobe Acrobat DC%' or DisplayName0 like '%adobe acrobat 2%'
+    ) AS adobeacrobat ON SYS.ResourceID = adobeacrobat.ResourceID
+
+
+			LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS
+        WHERE DisplayName0 LIKE '%assa per%'
+    ) AS assa ON SYS.ResourceID = assa.ResourceID
+
+				LEFT JOIN (
+        SELECT ResourceID, DisplayName0
+        FROM v_GS_ADD_REMOVE_PROGRAMS
+        WHERE DisplayName0 LIKE '%IBM SPSS%'
+    ) AS ibmspss ON SYS.ResourceID = ibmspss.ResourceID
+
 WHERE
-    CASE 
-        WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
-        WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
-        WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
-        ELSE 'Physical'
-    END = 'Physical'
+    DeviceType.Device_Type = 'Physical'
     AND (OS.Caption0 LIKE '%Windows 10%' OR OS.Caption0 LIKE '%Windows 11%')
     AND OS.Caption0 NOT LIKE '%Server%'
     AND SYS.Netbios_Name0 NOT LIKE 'WSDP%'
-    AND bginfo.BoundaryGroupName NOT LIKE 'CL - Server Net%'
+    AND (bginfo.BoundaryGroupName IS NULL OR bginfo.BoundaryGroupName NOT LIKE 'CL - Server Net%')
 GROUP BY
     SYS.Netbios_Name0,
     BIOS.SerialNumber0,
@@ -401,27 +495,38 @@ GROUP BY
     OS.Version0,
     OS.BuildNumber0,
     SYS.User_Name0,
-    sys.Last_Logon_Timestamp0,
+    SCCM.Department00,
+    SCCM.JobTitle00,
+    SCCM.Manager00,
+    SYS.Last_Logon_Timestamp0,
     SYS.Resource_Domain_OR_Workgr0,
-    SYS.ResourceID,
     IPADDR.IP_Addresses0,
     bginfo.BoundaryName,
     bginfo.BoundaryValue,
     bginfo.BoundaryGroupName,
     SCCM.OUpath00,
-    CASE 
-        WHEN CS.Manufacturer0 LIKE '%VMware%' THEN 'Virtual'
-        WHEN CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%' THEN 'Virtual'
-        WHEN CS.Manufacturer0 LIKE '%VirtualBox%' THEN 'Virtual'
-        ELSE 'Physical'
-    END
+    DeviceType.Device_Type,
+    SCCM.Extrapartition00,
+    camtasia.DisplayName0,
+    bluebeam.DisplayName0,
+    mindmanager.DisplayName0,
+	msproject.DisplayName0,
+	msvisio.DisplayName0,
+	stata.DisplayName0,
+	enterprisearchitect.DisplayName0,
+	philipsactiware.DisplayName0,
+	adobeacrobat.DisplayName0,
+	assa.DisplayName0,
+	ibmspss.DisplayName0
+
+
 ORDER BY
     SYS.Netbios_Name0;
 "@
 
 try {
     Write-Log -LogString "Running SQL query to fetch device inventory data..." -Severity "INFO"
-    $data = Invoke-Sqlcmd -ServerInstance $siteServer -Database CM_KV1 -Query $query -ErrorAction Stop
+    $data = Invoke-Sqlcmd -ServerInstance $siteServer -Database CM_KV1 -Query $query -ErrorAction Stop -QueryTimeout 180
     $deviceCount = $data | Measure-Object | Select-Object -ExpandProperty Count
     Write-Log -LogString "SQL query completed successfully, found $deviceCount devices" -Severity "INFO"
 }
@@ -439,14 +544,30 @@ foreach ($row in $data) {
         'Serial Number' = $row.Serial_number
         'Model' = $row.Model
         'Operating System' = $row.operating_system
-        'Build Number' = $row.Build_Number
+        #'Build Number' = $row.Build_Number
         'Last Logon User' = $row.Last_logon_user
+        'Department' = $row.Department
+        #'Manager' = $row.Manager
         'Last Logon Time' = $row.Last_logon_Time
         'IPv4 Address' = $row.IPv4_Address
-        'Boundary Name' = $row.Boundary_Name
+        #'Boundary Name' = $row.Boundary_Name
         'Boundary Group Name' = $row.Boundary_Group_Name
+        'Type' = $row.Classification
+        'Partition' = $row.partition
+        'Camtasia' = $row.camtasia
+        'Adobe' = $row.adobeacobat
+        'BlueBeam' = $row.bluebeam
+        'Mindmanager' = $row.mindmanager
+        'Stata' = $row.stata
+        'Enterprise Achitect' = $row.enterprisearchitect
+        'Philips'= $row.philipsactiware
+        'IBM Spss' = $row.ibmspss
+        'MS Project' = $row.msproject
+        'MS Visio' = $row.msvisio
+        'Assa' = $row.assa
         'Primary User(s)' = $row.Primary_users
-        'Type' = $row.OU_path
+
+        
     }
     $resultColl += $object
 }
