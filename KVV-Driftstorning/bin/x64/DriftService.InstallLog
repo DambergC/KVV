@@ -1,0 +1,84 @@
+﻿Installing assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Installing service DriftService...
+Service DriftService has been successfully installed.
+Creating EventLog source DriftService in log Application...
+Committing assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Uninstalling assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Removing EventLog source DriftService.
+Service DriftService is being removed from the system...
+Service DriftService was successfully removed from the system.
+Installing assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Installing service DriftService...
+Service DriftService has been successfully installed.
+Creating EventLog source DriftService in log Application...
+Committing assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Uninstalling assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Removing EventLog source DriftService.
+Service DriftService is being removed from the system...
+Service DriftService was successfully removed from the system.
+Installing assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Installing service DriftService...
+Service DriftService has been successfully installed.
+Creating EventLog source DriftService in log Application...
+Committing assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Uninstalling assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Removing EventLog source DriftService.
+Service DriftService is being removed from the system...
+Service DriftService was successfully removed from the system.
+Installing assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Installing service DriftService...
+Service DriftService has been successfully installed.
+Creating EventLog source DriftService in log Application...
+Committing assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Uninstalling assembly 'E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe'.
+Affected parameters are:
+   logtoconsole = 
+   assemblypath = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.exe
+   logfile = E:\Github\KVVApp\KVV-Driftstorning\bin\x64\DriftService.InstallLog
+Removing EventLog source DriftService.
+Service DriftService is being removed from the system...
+Service DriftService was successfully removed from the system.

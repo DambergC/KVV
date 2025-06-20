@@ -1,0 +1,6 @@
+﻿<?xml version="1.0"?>
+<Configuration>
+	<RegistrySearch>0</RegistrySearch>
+	<FileShareSearch>1</FileShareSearch>
+	<Filepath>\\server\share\IncidentInfoData.xml</Filepath>
+</Configuration>
