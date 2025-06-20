@@ -1,0 +1,35 @@
+// RegKeyToMOF by Mark Cochrane (with help from Skissinger, SteveRac, Jonas Hettich, Kent Agerlund & Barker)
+// this section tells the inventory agent what to collect
+// 5/8/2025 2:57:15 PM
+
+#pragma namespace ("\\\\.\\root\\cimv2")
+#pragma deleteclass("SCCMItems", NOFAIL)
+[DYNPROPS]
+Class SCCMItems
+{
+[key] string KeyName;
+String OUpath;
+};
+
+[DYNPROPS]
+Instance of SCCMItems
+{
+KeyName="RegKeyToMOF_32";
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMItems|OUpath"),Dynamic,Provider("RegPropProv")] OUpath;
+};
+
+#pragma namespace ("\\\\.\\root\\cimv2")
+#pragma deleteclass("SCCMItems_64", NOFAIL)
+[DYNPROPS]
+Class SCCMItems_64
+{
+[key] string KeyName;
+String OUpath;
+};
+
+[DYNPROPS]
+Instance of SCCMItems_64
+{
+KeyName="RegKeyToMOF_64";
+[PropertyContext("Local|HKEY_LOCAL_MACHINE\\SOFTWARE\\SCCMItems|OUpath"),Dynamic,Provider("RegPropProv")] OUpath;
+};
