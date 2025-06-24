@@ -1315,6 +1315,7 @@ $buttonCMD_Click={
 	
 	# Start cmd.exe as the LADM user with elevation
 	Start-Process powershell.exe -ArgumentList "-Command Start-Process cmd.exe -Verb RunAs" -Credential $global:credential
+	
 }
 
 $buttonMMC_Click={
@@ -1345,6 +1346,6 @@ $buttonClose_Click={
 
 ]]></Code>
   <TV>0</TV>
-  <Mode>0</Mode>
+  <Mode>1</Mode>
   <Assemblies />
 </File>
