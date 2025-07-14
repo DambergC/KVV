@@ -90,54 +90,6 @@ function Get-HKLMRegistryValue
 # Get all values from a registry key
 # Get-HKLMRegistryValue -KeyPath "SOFTWARE\Microsoft\Windows NT\CurrentVersion"
 
-function Set-HKLMRegistryValue
-{
-	[CmdletBinding()]
-	param (
-		[Parameter(Mandatory = $true)]
-		[string]$KeyPath,
-		[Parameter(Mandatory = $true)]
-		[string]$ValueName,
-		[Parameter(Mandatory = $true)]
-		[object]$Value,
-		[Parameter(Mandatory = $false)]
-		[ValidateSet('String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord')]
-		[string]$ValueType = 'String'
-	)
-	
-	try
-	{
-		# Ensure the path starts with HKLM:
-		if (-not $KeyPath.StartsWith("HKLM:\"))
-		{
-			$KeyPath = "HKLM:\$KeyPath"
-		}
-		
-		# Create the key if it doesn't exist
-		if (-not (Test-Path -Path $KeyPath))
-		{
-			New-Item -Path $KeyPath -Force | Out-Null
-		}
-		
-		# Set the value
-		Set-ItemProperty -Path $KeyPath -Name $ValueName -Value $Value -Type $ValueType -Force
-		
-		Write-Verbose "Successfully set '$ValueName' to '$Value' (Type: $ValueType) in '$KeyPath'"
-		return $true
-	}
-	catch
-	{
-		Write-Error "Error writing to registry: $_"
-		return $false
-	}
-}
-
-# Example usage:
-# Set a string value in the registry
-# Set-HKLMRegistryValue -KeyPath "SOFTWARE\MyCompany\MyApp" -ValueName "InstallPath" -Value "C:\Program Files\MyApp"
-
-# Set a DWORD value in the registry
-# Set-HKLMRegistryValue -KeyPath "SOFTWARE\MyCompany\MyApp" -ValueName "Enabled" -Value 1 -ValueType DWord
 
 
 

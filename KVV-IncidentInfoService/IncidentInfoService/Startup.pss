@@ -1,6 +1,5 @@
-﻿<File version="3.1">
-  <Code>
-    <![CDATA[# Warning: Do not rename Start-MyService, Invoke-MyService and Stop-MyService functions
+﻿<File version="3.2">
+  <Code><![CDATA[# Warning: Do not rename Start-MyService, Invoke-MyService and Stop-MyService functions
 
 
 function Start-MyService
@@ -10,6 +9,24 @@ function Start-MyService
 	$global:bRunService = $true
 	$global:bServiceRunning = $false
 	$global:bServicePaused = $false
+	[XML]$config = Get-Content "C:\Program Files\IncidentInfo\Service\IncidentInfoServiceSettings.xml"
+	$filepath = $config.Configuration.Filepath
+	
+	$filesharesearch = $config.Configuration.Filesharesearch
+	$RegistrySearch = $config.Configuration.RegistrySearch
+	
+	if ($filesharesearch -eq 1)
+	{
+		Write-EventLog -LogName Application -EventId 1 -Message "Service start and getting info from:$filepath" -Source IncidentInfoService
+	}
+	
+	if ($RegistrySearch -eq 1)
+	{
+		Write-EventLog -LogName Application -EventId 1 -Message "Service start and getting info from: HKEY_LOCAL_MACHINE\SOFTWARE\DriftInfo" -Source IncidentInfoService
+	}
+	
+	
+
 }
 
 function Invoke-MyService
@@ -20,9 +37,61 @@ function Invoke-MyService
 		{
 			if($global:bServicePaused -eq $false) #Only act if service is not paused
 			{
-				#Place code for your service here
-				#e.g. $ProcessList = Get-Process solitaire -ErrorAction SilentlyContinue
 				
+				[XML]$config = Get-Content "C:\Program Files\IncidentInfo\Service\IncidentInfoServiceSettings.xml"
+				$filepath = $config.Configuration.Filepath
+				
+				$filesharesearch = $config.Configuration.Filesharesearch
+				$RegistrySearch = $config.Configuration.RegistrySearch
+				
+				
+				if ($filesharesearch -eq 1)
+				{
+					
+					[XML]$configIncident = Get-Content $filepath
+					# Read Start and Stop times
+					$startStr = $configIncident.Configuration.Start.trim()
+					$stopStr = $configIncident.Configuration.Stop.trim()
+					
+					try
+					{
+						# Try ParseExact first
+						$startTime = [datetime]::ParseExact($startStr, "yyyy-MM-dd HH:mm:ss", $null)
+						$stopTime = [datetime]::ParseExact($stopStr, "yyyy-MM-dd HH:mm:ss", $null)
+					}
+					catch
+					{
+						# Fallback: Use Parse if ParseExact fails
+						$startTime = [datetime]::Parse($startStr)
+						$stopTime = [datetime]::Parse($stopStr)
+					}
+					
+					# Current local time
+					$now = Get-Date
+					
+					# Check if current time is within the range
+					if ($now -ge $startTime -and $now -le $stopTime)
+					{
+						Write-EventLog -LogName Application -EventId 1 -Message "Current time $now is within the range. Launching application..." -Source IncidentInfoService
+						# This script detects the active user session and launches your application there
+						$query = query session | Where-Object { $_ -match 'Active' }
+						$sessionId = ($query -split ' +')[1]
+						
+						# Path to Windows executable that can create processes in other sessions
+						$processPath = "C:\Program Files\IncidentInfo\PsExec64.exe"
+						
+						# Launch your application in the active session with accepteula parameter
+						Start-Process -FilePath $processPath -ArgumentList "-accepteula -i $sessionId -d -s `"C:\Program Files\IncidentInfo\Driftstorning.exe`""
+					}
+					else
+					{
+						Write-EventLog -LogName Application -EventId 1 -Message "Current time $now is NOT within the range. Application will not start." -Source IncidentInfoService
+						#Write-Host "Current time $now is NOT within the range. Application will not start."
+					}
+				} #e.g. $ProcessList = Get-Process solitaire -ErrorAction SilentlyContinue
+
+				
+				#Write-EventLog -LogName Application -EventId 1 -Message "Path to infoxml:$filepath" -Source IncidentInfoService
 				# Use Write-Host or any other PowerShell output function to write to the System's application log
 			}
 		}
@@ -34,11 +103,17 @@ function Invoke-MyService
 		# Adjust sleep timing to determine how often your service becomes active.
 		if($global:bServicePaused -eq $true) 
 		{
-			Start-Sleep -Seconds 20 # if the service is paused we sleep longer between checks.
+			Start-Sleep -Seconds 60 # if the service is paused we sleep longer between checks.
+			
+			[XML]$config = Get-Content "C:\Program Files\IncidentInfo\Service\IncidentInfoServiceSettings.xml"
+			$filepath = $config.Configuration.Filepath
+			
+			#Write-EventLog -LogName Application -EventId 1 -Message "Path to infoxml:$filepath" -Source IncidentInfoService
+			
 		}
 		else 
 		{
-			Start-Sleep –Seconds 10 # a lower number will make your service active more often and use more CPU cycles
+			Start-Sleep –Seconds 30 # a lower number will make your service active more often and use more CPU cycles
 		}
 	}
 	$global:bServiceRunning	= $false
@@ -78,4 +153,5 @@ function Continue-MyService
 
 
 ]]></Code>
+  <TV>0</TV>
 </File>
