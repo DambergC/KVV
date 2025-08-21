@@ -330,9 +330,11 @@ SELECT
     CASE
         WHEN SCCM.OUpath00 LIKE '%Delad enhet%' THEN 'DMITA'
         WHEN SCCM.OUpath00 LIKE '%OU=Windows 11 MITAv2%' THEN 'MITA'
+        when SCCM.OUPath00 like '%OU=MITA,OU=Fysiska klienter,OU=Windows 11%' then 'MITA'
+		when sccm.OUPath00 like '%OU=DMITA,OU=MITA,OU=Fysiska klienter%' then 'DMITA'
         WHEN SCCM.OUpath00 LIKE '%SMP%' THEN 'MITA'
         WHEN SCCM.OUpath00 LIKE '%T1%' THEN 'T1'
-        ELSE 'No info'
+        ELSE '---'
     END AS [Classification],
 
     -- Show actual DisplayName0 if software is present, otherwise '---'
@@ -526,7 +528,7 @@ ORDER BY
 
 try {
     Write-Log -LogString "Running SQL query to fetch device inventory data..." -Severity "INFO"
-    $data = Invoke-Sqlcmd -ServerInstance $siteServer -Database CM_KV1 -Query $query -ErrorAction Stop -QueryTimeout 180
+    $data = Invoke-Sqlcmd -ServerInstance $siteServer -Database CM_KV1 -Query $query -ErrorAction Stop -QueryTimeout 600
     $deviceCount = $data | Measure-Object | Select-Object -ExpandProperty Count
     Write-Log -LogString "SQL query completed successfully, found $deviceCount devices" -Severity "INFO"
 }
