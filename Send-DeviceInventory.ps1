@@ -305,52 +305,49 @@ if (-not $allModulesLoaded) {
 #region SQL Query and Data Collection
 $query = @"
 SELECT
-    SYS.Netbios_Name0 AS 'Device_Name',
-    BIOS.SerialNumber0 AS 'Serial_Number',
-    CS.Model0 AS 'Model',
-    CS.Manufacturer0 AS 'Manufacturer',
-    OS.Caption0 AS 'Operating_System',
-    OS.Version0 AS 'OS_Version',
-    OS.BuildNumber0 AS 'Build_Number',
+    SYS.Netbios_Name0 AS [Device_Name],
+    BIOS.SerialNumber0 AS [Serial_Number],
+    CS.Model0 AS [Model],
+    CS.Manufacturer0 AS [Manufacturer],
+    OS.Caption0 AS [Operating_System],
+    OS.Version0 AS [OS_Version],
+    OS.BuildNumber0 AS [Build_Number],
     DeviceType.Device_Type,
-    STRING_AGG(vru.Name0, ', ') AS 'Primary_Users',
-    SYS.User_Name0 AS 'Last_Logon_User',
-    SYS.Last_Logon_Timestamp0 AS 'Last_Logon_Time',
-    SYS.Resource_Domain_OR_Workgr0 AS 'Domain',
-    STRING_AGG(vru.Mail0, '; ') AS 'User_Emails',
-    IPADDR.IP_Addresses0 AS 'IPv4_Address',
-    bginfo.BoundaryName AS 'Boundary_Name',
-    bginfo.BoundaryValue AS 'Boundary_Value',
-    bginfo.BoundaryGroupName AS 'Boundary_Group_Name',
-    SCCM.Department00 AS 'Department',
-    SCCM.Extrapartition00 AS 'Partition',
-    SCCM.Jobtitle00 AS 'Jobtitel',
-    SCCM.Manager00 AS 'Manager',
-    SCCM.OUpath00 AS 'OU_Path',
+    STRING_AGG(vru.Name0, ', ') AS [Primary_Users],
+    SYS.User_Name0 AS [Last_Logon_User],
+    SYS.Last_Logon_Timestamp0 AS [Last_Logon_Time],
+    SYS.Resource_Domain_OR_Workgr0 AS [Domain],
+    STRING_AGG(vru.Mail0, '; ') AS [User_Emails],
+    IPADDR.IP_Addresses0 AS [IPv4_Address],
+    bginfo.BoundaryName AS [Boundary_Name],
+    bginfo.BoundaryValue AS [Boundary_Value],
+    bginfo.BoundaryGroupName AS [Boundary_Group_Name],
+    SCCM.Department00 AS [Department],
+    SCCM.Extrapartition00 AS [Partition],
+    SCCM.Jobtitle00 AS [Jobtitle],
+    SCCM.Manager00 AS [Manager],
+    SCCM.OUpath00 AS [OU_Path],
     CASE
         WHEN SCCM.OUpath00 LIKE '%Delad enhet%' THEN 'DMITA'
         WHEN SCCM.OUpath00 LIKE '%OU=Windows 11 MITAv2%' THEN 'MITA'
-        when SCCM.OUPath00 like '%OU=MITA,OU=Fysiska klienter,OU=Windows 11%' then 'MITA'
-		when sccm.OUPath00 like '%OU=DMITA,OU=MITA,OU=Fysiska klienter%' then 'DMITA'
+        WHEN SCCM.OUpath00 LIKE '%OU=MITA,OU=Fysiska klienter,OU=Windows 11%' THEN 'MITA'
+        WHEN SCCM.OUpath00 LIKE '%OU=DMITA,OU=MITA,OU=Fysiska klienter%' THEN 'DMITA'
         WHEN SCCM.OUpath00 LIKE '%SMP%' THEN 'MITA'
         WHEN SCCM.OUpath00 LIKE '%T1%' THEN 'T1'
         ELSE '---'
     END AS [Classification],
 
-    -- Show actual DisplayName0 if software is present, otherwise '---'
     ISNULL(camtasia.DisplayName0, '---') AS [camtasia],
     ISNULL(bluebeam.DisplayName0, '---') AS [bluebeam],
     ISNULL(mindmanager.DisplayName0, '---') AS [mindmanager],
-	ISNULL(msproject.DisplayName0, '---') AS [msproject],
-	ISNULL(msvisio.DisplayName0, '---') AS [msvisio],
-	ISNULL(stata.DisplayName0, '---') AS [stata],
-	ISNULL(enterprisearchitect.DisplayName0, '---') AS [enterprisearchitect],
-	ISNULL(philipsactiware.DisplayName0, '---') AS [philipsactiware],
-	ISNULL(adobeacrobat.DisplayName0, '---') AS [adobeacobat],
-	ISNULL(assa.DisplayName0, '---') AS [assa],
-	ISNULL(ibmspss.DisplayName0, '---') AS [ibmspss]
-
-	
+    ISNULL(msproject.DisplayName0, '---') AS [msproject],
+    ISNULL(msvisio.DisplayName0, '---') AS [msvisio],
+    ISNULL(stata.DisplayName0, '---') AS [stata],
+    ISNULL(enterprisearchitect.DisplayName0, '---') AS [enterprisearchitect],
+    ISNULL(philipsactiware.DisplayName0, '---') AS [philipsactiware],
+    ISNULL(adobeacrobat.DisplayName0, '---') AS [adobeacrobat],
+    ISNULL(assa.DisplayName0, '---') AS [assa],
+    ISNULL(ibmspss.DisplayName0, '---') AS [ibmspss]
 
 FROM
     v_R_System AS SYS
@@ -387,9 +384,9 @@ FROM
     OUTER APPLY (
         SELECT DISTINCT 
             bg.GroupID,
-            bg.Name AS 'BoundaryGroupName',
-            b.DisplayName AS 'BoundaryName',
-            b.Value AS 'BoundaryValue'
+            bg.Name AS [BoundaryGroupName],
+            b.DisplayName AS [BoundaryName],
+            b.Value AS [BoundaryValue]
         FROM 
             vSMS_Boundary b
             JOIN vSMS_BoundaryGroupMembers bgm ON b.BoundaryID = bgm.BoundaryID
@@ -431,52 +428,49 @@ FROM
         WHERE DisplayName0 LIKE '%Mindmanager%'
     ) AS mindmanager ON SYS.ResourceID = mindmanager.ResourceID
 
-	LEFT JOIN (
+    LEFT JOIN (
         SELECT ResourceID, DisplayName0
         FROM v_GS_ADD_REMOVE_PROGRAMS_64
         WHERE DisplayName0 LIKE '%Microsoft Project%'
     ) AS msproject ON SYS.ResourceID = msproject.ResourceID
 
-		LEFT JOIN (
+    LEFT JOIN (
         SELECT ResourceID, DisplayName0
         FROM v_GS_ADD_REMOVE_PROGRAMS_64
         WHERE DisplayName0 LIKE '%Microsoft Visio%'
     ) AS msvisio ON SYS.ResourceID = msvisio.ResourceID
 
-	
-		LEFT JOIN (
+    LEFT JOIN (
         SELECT ResourceID, DisplayName0
         FROM v_GS_ADD_REMOVE_PROGRAMS_64
         WHERE DisplayName0 LIKE '%stata%'
     ) AS stata ON SYS.ResourceID = stata.ResourceID
 
-		
-		LEFT JOIN (
+    LEFT JOIN (
         SELECT ResourceID, DisplayName0
         FROM v_GS_ADD_REMOVE_PROGRAMS_64
         WHERE DisplayName0 LIKE '%Enterprise Architect%'
     ) AS enterprisearchitect ON SYS.ResourceID = enterprisearchitect.ResourceID
-			
-		LEFT JOIN (
+
+    LEFT JOIN (
         SELECT ResourceID, DisplayName0
         FROM v_GS_ADD_REMOVE_PROGRAMS
         WHERE DisplayName0 LIKE '%Philips Actiware%'
     ) AS philipsactiware ON SYS.ResourceID = philipsactiware.ResourceID
-				
-		LEFT JOIN (
+
+    LEFT JOIN (
         SELECT ResourceID, DisplayName0
         FROM v_GS_ADD_REMOVE_PROGRAMS
-        where	DisplayName0 like '%Adobe Acrobat DC%' or DisplayName0 like '%adobe acrobat 2%'
+        WHERE DisplayName0 LIKE '%Adobe Acrobat DC%' OR DisplayName0 LIKE '%adobe acrobat 2%'
     ) AS adobeacrobat ON SYS.ResourceID = adobeacrobat.ResourceID
 
-
-			LEFT JOIN (
+    LEFT JOIN (
         SELECT ResourceID, DisplayName0
         FROM v_GS_ADD_REMOVE_PROGRAMS
         WHERE DisplayName0 LIKE '%assa per%'
     ) AS assa ON SYS.ResourceID = assa.ResourceID
 
-				LEFT JOIN (
+    LEFT JOIN (
         SELECT ResourceID, DisplayName0
         FROM v_GS_ADD_REMOVE_PROGRAMS
         WHERE DisplayName0 LIKE '%IBM SPSS%'
@@ -498,7 +492,7 @@ GROUP BY
     OS.BuildNumber0,
     SYS.User_Name0,
     SCCM.Department00,
-    SCCM.JobTitle00,
+    SCCM.Jobtitle00,
     SCCM.Manager00,
     SYS.Last_Logon_Timestamp0,
     SYS.Resource_Domain_OR_Workgr0,
@@ -512,15 +506,14 @@ GROUP BY
     camtasia.DisplayName0,
     bluebeam.DisplayName0,
     mindmanager.DisplayName0,
-	msproject.DisplayName0,
-	msvisio.DisplayName0,
-	stata.DisplayName0,
-	enterprisearchitect.DisplayName0,
-	philipsactiware.DisplayName0,
-	adobeacrobat.DisplayName0,
-	assa.DisplayName0,
-	ibmspss.DisplayName0
-
+    msproject.DisplayName0,
+    msvisio.DisplayName0,
+    stata.DisplayName0,
+    enterprisearchitect.DisplayName0,
+    philipsactiware.DisplayName0,
+    adobeacrobat.DisplayName0,
+    assa.DisplayName0,
+    ibmspss.DisplayName0
 
 ORDER BY
     SYS.Netbios_Name0;
