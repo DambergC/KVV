@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+	<Logfile>
+		<Path>G:\Scripts\Logfiles\</Path>
+		<Name>DeviceInvent.log</Name>
+		<Logfilethreshold>2000000</Logfilethreshold>
+	</Logfile>
+	<HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
+	<Recipients>
+		<Recipients email="christian.damberg@kriminalvarden.se"/>
+        <Recipients email="HK.IT.Windows11utrullning@kriminalvarden.se"/>
+	</Recipients>
+	<SiteServer>vntsql0299</SiteServer>
+	<Mailfrom>no-reply@kvv.se</Mailfrom>
+	<MailSMTP>smtp.kvv.se</MailSMTP>
+	<MailPort>25</MailPort>
+	<MailCustomer>Kriminalvarden - IT</MailCustomer>
+</Configuration>
