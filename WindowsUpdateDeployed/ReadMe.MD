@@ -73,51 +73,48 @@ The script requires a configuration file named `ScriptConfigPatchReleased.xml` i
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <Configuration>
-  <!-- MECM Site Server -->
-  <SiteServer>SITESERVERNAME.domain.com</SiteServer>
-  
-  <!-- Email Configuration -->
-  <MailSMTP>smtp.company.com</MailSMTP>
-  <MailPort>25</MailPort>
-  <Mailfrom>noreply@company.com</Mailfrom>
-  <MailCustomer>Company Name</MailCustomer>
-  
-  <!-- Recipients -->
-  <Recipients>
-    <Recipients>
-      <Email>admin1@company.com</Email>
-    </Recipients>
-    <Recipients>
-      <Email>admin2@company.com</Email>
-    </Recipients>
-    <Recipients>
-      <Email>team@company.com</Email>
-    </Recipients>
-  </Recipients>
-  
-  <!-- Logging Configuration -->
-  <Logfile>
-    <Path>C:\Logs\</Path>
-    <Name>windowsupdatedeployed.log</Name>
-    <Logfilethreshold>5242880</Logfilethreshold> <!-- 5 MB in bytes -->
-  </Logfile>
-  
-  <!-- Update Deployment Settings -->
-  <UpdateDeployed>
-    <LimitDays>-30</LimitDays>
-    <DaysAfterPatchToRun>7</DaysAfterPatchToRun>
-    <UpdateGroupName>2024-* - All Software Updates</UpdateGroupName>
-  </UpdateDeployed>
-  
-  <!-- Disable Report for Specific Months -->
-  <DisableReportMonth>
-    <DisableReportMonth>
-      <Number>7</Number>  <!-- July -->
-    </DisableReportMonth>
-    <DisableReportMonth>
-      <Number>12</Number> <!-- December -->
-    </DisableReportMonth>
-  </DisableReportMonth>
+	<Logfile>
+		<Path>G:\Scripts\Logfiles\</Path>
+		<Name>WindowsUpdateScript.log</Name>
+		<Logfilethreshold>2000000</Logfilethreshold>
+	</Logfile>
+	<HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
+	<RunScript>
+		<Job DeploymentID="16777362" Offsetdays="2" Description="Grupp100"/>
+		<Job DeploymentID="16777363" Offsetdays="8" Description="Grupp200"/>
+		<Job DeploymentID="16777364" Offsetdays="15" Description="Grupp300"/>
+	</RunScript>
+	<DisableReportMonth>
+		<DisableReportMonth Number=""/>
+		<DisableReportMonth Number=""/>
+		<DisableReportMonth Number=""/>
+	</DisableReportMonth>
+	<Recipients>
+		<Recipients email="christian.damberg@kriminalvarden.se"/>
+		<Recipients email="Joakim.Stenqvist@kriminalvarden.se"/>
+		<Recipients email="Magnus.Jonsson6@kriminalvarden.se"/>
+		<Recipients email ="Keiarash.Naderifarsani@kriminalvarden.se"/>
+		<Recipients email="Christian.Brask@kriminalvarden.se"/>
+		<Recipients email="lars.garlin@kriminalvarden.se"/>
+		<Recipients email="sockv@kriminalvarden.se"/>
+		<Recipients email="Hans.Pettersson@kriminalvarden.se"/>
+		<Recipients email="Magnus.Eklof@kriminalvarden.se"/>
+		<Recipients email="Fredrik.Alderin@kriminalvarden.se"/>
+		<Recipients email="Peter.Overhem@kriminalvarden.se"/>
+		<Recipients email="Nicklas.Tigerberg@kriminalvarden.se"/>
+		<Recipients email="Jens.Wolinder@kriminalvarden.se"/>
+		<Recipients email="Peter.Bystrom@kriminalvarden.se"/>
+	</Recipients>
+	<UpdateDeployed>
+		<LimitDays>-25</LimitDays>
+		<UpdateGroupName>Server Patch Tuesday</UpdateGroupName>
+		<DaysAfterPatchToRun>1</DaysAfterPatchToRun>
+	</UpdateDeployed>
+	<SiteServer>Vntapp0780</SiteServer>
+	<Mailfrom>no-reply@kvv.se</Mailfrom>
+	<MailSMTP>smtp.kvv.se</MailSMTP>
+	<MailPort>25</MailPort>
+	<MailCustomer>Kriminalvarden - IT</MailCustomer>
 </Configuration>
 ```
 
