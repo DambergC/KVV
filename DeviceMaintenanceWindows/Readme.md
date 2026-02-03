@@ -1,239 +1,319 @@
-# DeviceMaintenanceWindows
+# Device Maintenance Windows Report (MECM/SCCM)
 
-Scripts and helper functions to create, manage, and document **Windows device maintenance windows** (typically for patching/reboots/servicing) in a consistent way.
+Generates an HTML + CSV report of **MECM (Microsoft Endpoint Configuration Manager / SCCM)** device Maintenance Windows and emails the result to administrators.
 
-> This folder is intended to be used from PowerShell. The scripts are written to be composable: you can run a main script end-to-end, or call individual functions from your own automation.
+Script: `DeviceMaintenanceWindows/Send-MMCM_DeviceMaintenanceWindows.ps1`
 
 ---
 
-## What this does (high level)
+## What the script does (high level)
 
-Depending on which script(s) in this folder you run, the tooling generally helps you:
+When the script runs (typically via **Scheduled Task** on the MECM site server), it:
 
-- Define a **maintenance window** (start/end time, time zone, recurrence if applicable).
-- Apply that window to a **set of devices** (often via a group, a tag, a query, or an input list).
-- Optionally produce **output** (logs / CSV / JSON) describing what was changed and when.
+1. Loads configuration from `ScriptConfigMW.xml`.
+2. Connects to the MECM site (determines SiteCode via WMI and switches to the `SiteCode:` PSDrive).
+3. Calculates Patch Tuesday dates for the current and next month.
+4. On the configured “report day” (Patch Tuesday + offset days):
+   - Reads all devices in a target collection (`$collectionidToCheck` in the script).
+   - For each device:
+     - Finds all collections the device is a member of.
+     - Filters to collections that have Maintenance Windows.
+     - Retrieves Maintenance Windows and selects relevant ones.
+     - Enriches each result row by querying an external SQL database for an application name.
+   - Exports the result to CSV.
+   - Generates an HTML report (PSWriteHTML).
+   - Sends an email (Send-MailKitMessage) with HTML body and attaches the HTML + CSV files.
 
-If you have multiple environments (Prod/Test) or multiple regions, the functions are meant to make maintenance windows repeatable and auditable.
+If it is **not** the report day, the script logs and exits without creating/sending the report.
+
+---
+
+## Outputs
+
+The script writes:
+
+- **HTML report file** (PSWriteHTML)
+- **CSV report file**
+- **Log files**
+
+> Note: In the script, paths are currently hard-coded to `G:\Scripts\...` and filenames include the date. The XML also contains paths (see below), but the posted script currently uses its own variables for log/out paths.
 
 ---
 
 ## Prerequisites
 
-### 1) PowerShell version
-- **Windows PowerShell 5.1** *or* **PowerShell 7+** is typically fine.
-- Recommended: **PowerShell 7+** for better TLS defaults and cross-platform behavior (if you run from a build agent).
+### Runtime environment
 
-Check:
-```powershell
-$PSVersionTable.PSVersion
-```
+- Windows Server where the MECM admin console / provider access is available (commonly the **site server**).
+- PowerShell 5.1 (typical for MECM environments) or PowerShell 7+ *if* all required modules support it.
+- Network access from the running host to:
+  - MECM SMS Provider / Site Server WMI
+  - SQL server used for enrichment (`$dbserver` in the script)
+  - SMTP server
 
-### 2) Execution policy
-If scripts are blocked on Windows, you may need one of the following (choose what matches your security policy):
+### Permissions
 
-```powershell
-# Current session only
-Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+The account running the Scheduled Task typically needs:
 
-# Or for the current user
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
+- MECM rights to read:
+  - Collection members
+  - Device collection memberships
+  - Maintenance windows
+  - Collection metadata
+- WMI permission to query on the site server namespace:
+  - `root\SMS`, class `SMS_ProviderLocation`
+- SQL permissions for the enrichment query (SELECT against the external database/table)
+- Write access to output/log folders (for example `G:\Scripts\Outfiles\` and `G:\Scripts\Logfiles\`)
+- Permission to send mail via the configured SMTP server
 
-### 3) Required modules (common patterns)
-Because I can’t see the exact module imports in your scripts from this chat alone, here are the **most common** prerequisites for this kind of automation. Check your `.ps1` / `.psm1` files for `Import-Module` lines and install what they require.
+### PowerShell modules / components
 
-Typical examples:
+The script imports/uses these modules:
 
-- `Microsoft.Graph.*` (if managing device groups / Intune / Entra via Graph)
-- `Az.Accounts` / `Az.Resources` (if targeting Azure resources)
-- `PSReadLine` (usually optional)
-- Any **internal module** shipped in this repo (e.g., `.\KVV.*.psm1`)
+- **Send-MailKitMessage**
+  - Used to send email and attach the report files.
+- **PSWriteHTML**
+  - Used to generate the HTML report page.
+- **PatchManagementSupportTools**
+  - Used for helper functions (for example `Get-PatchTuesday`, and likely `Get-CMModule`).
 
-Install examples:
-```powershell
-# Microsoft Graph (example)
-Install-Module Microsoft.Graph -Scope CurrentUser
+Additionally:
 
-# Az modules (example)
-Install-Module Az -Scope CurrentUser
-```
-
-### 4) Authentication / permissions
-You will typically need:
-- Rights to **read** the target device inventory and groups
-- Rights to **update** whatever entity stores your “maintenance window” configuration (device group metadata, config profile, tags, etc.)
-- If using Microsoft Graph: the relevant **Graph scopes** (e.g., DeviceManagement*, Group.ReadWrite.All, etc.)
-
-> Tip: run once interactively to sign in, then use a service principal / managed identity for automation if needed.
+- **ConfigurationManager** module (MECM/SCCM PowerShell cmdlets)
+  - The script uses cmdlets such as `Get-CMCollectionMember`, `Get-CMMaintenanceWindow`, `Get-CMCollection`, etc.
+- **SqlServer** module (for `Invoke-Sqlcmd`)
+  - The script uses `Invoke-Sqlcmd` to enrich results with application information.
 
 ---
 
-## Folder contents (expected layout)
+## Configuration: `ScriptConfigMW.xml`
 
-You will likely see one or more of the following types of files:
+The script loads XML like:
 
-- `*.ps1` — runnable scripts (entry points)
-- `*.psm1` — function modules (reusable functions)
-- `*.psd1` — module manifests
-- `*.json` / `*.csv` — configuration or input data
+- `.\ScriptConfigMW.xml` (relative path)
 
-If there is a “main” script, it’s usually the one with a name like:
-- `Invoke-*.ps1`
-- `New-*.ps1`
-- `Set-*.ps1`
-- `Start-*.ps1`
+### Provided XML example
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Logfile>
+    <Path>G:\Scripts\Logfiles\</Path>
+    <Name>WindowsUpdateScript.log</Name>
+    <Logfilethreshold>2000000</Logfilethreshold>
+  </Logfile>
+
+  <HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
+
+  <RunScript>
+    <Job DeploymentID="16777362" Offsetdays="2" Description="Grupp100"/>
+    <Job DeploymentID="16777363" Offsetdays="8" Description="Grupp200"/>
+    <Job DeploymentID="16777364" Offsetdays="15" Description="Grupp300"/>
+  </RunScript>
+
+  <DisableReportMonth>
+    <DisableReportMonth Number=""/>
+    <DisableReportMonth Number=""/>
+    <DisableReportMonth Number=""/>
+  </DisableReportMonth>
+
+  <Recipients>
+    <Recipients email="christian.damberg@kriminalvarden.se"/>
+    <Recipients email="Joakim.Stenqvist@kriminalvarden.se"/>
+    <Recipients email="Christian.Brask@kriminalvarden.se"/>
+    <Recipients email="Magnus.Jonsson6@kriminalvarden.se"/>
+    <Recipients email ="Keiarash.Naderifarsani@kriminalvarden.se"/>
+    <Recipients email="lars.garlin@kriminalvarden.se"/>
+    <Recipients email="sockv@kriminalvarden.se"/>
+    <Recipients email="Hans.Pettersson@kriminalvarden.se"/>
+    <Recipients email="Magnus.Eklof@kriminalvarden.se"/>
+    <Recipients email="Fredrik.Alderin@kriminalvarden.se"/>
+    <Recipients email="Peter.Overhem@kriminalvarden.se"/>
+    <Recipients email="Nicklas.Tigerberg@kriminalvarden.se"/>
+    <Recipients email="Jens.Wolinder@kriminalvarden.se"/>
+    <Recipients email="Peter.Bystrom@kriminalvarden.se"/>
+  </Recipients>
+
+  <UpdateDeployed>
+    <LimitDays>-25</LimitDays>
+    <UpdateGroupName>Server Patch Tuesday</UpdateGroupName>
+    <DaysAfterPatchToRun>1</DaysAfterPatchToRun>
+  </UpdateDeployed>
+
+  <SiteServer>vntapp0780</SiteServer>
+  <Mailfrom>no-reply@kvv.se</Mailfrom>
+  <MailSMTP>smtp.kvv.se</MailSMTP>
+  <MailPort>25</MailPort>
+  <MailCustomer>Kriminalvarden - IT</MailCustomer>
+</Configuration>
+```
+
+### How the script uses the XML (current behavior)
+
+The posted script reads these values:
+
+- `Configuration/SiteServer`
+  - Used for WMI query to determine the MECM SiteCode.
+- `Configuration/MailSMTP`
+  - SMTP server for Send-MailKitMessage.
+- `Configuration/Mailfrom`
+  - From address for the email.
+- `Configuration/MailPort`
+  - SMTP port.
+- `Configuration/MailCustomer`
+  - Included in the subject line.
+- `Configuration/Recipients`
+  - Used to build the recipient list.
+
+> Important: the **recipient parsing in the posted script expects a different XML shape** (it looks for `.Recipients.Email` as elements), while your XML stores recipients as attributes (`email="..."`).
+>
+> That means: **with the script exactly as posted, recipient extraction may return empty** unless the script is adjusted to read the `email` attribute.
+
+### XML fields present but not used by the posted script
+
+Your XML also contains:
+
+- `Configuration/Logfile/*`
+- `Configuration/HTMLfilePath`
+- `Configuration/RunScript/Job[@DeploymentID,@Offsetdays,@Description]`
+- `Configuration/DisableReportMonth/*`
+- `Configuration/UpdateDeployed/*`
+
+These look like they are shared config for other patch/report scripts, or for an extended version of this script. The posted `Send-MMCM_DeviceMaintenanceWindows.ps1` does not appear to consume these nodes (it uses hard-coded paths and variables for some of the same concepts).
 
 ---
 
-## Functions / scripts (what they do)
+## Script flow (detailed)
 
-### Common function responsibilities
-Even if your exact function names differ, most maintenance-window toolsets include functions in these categories:
+### 1) Initialization / configuration
 
-1. **Input & validation**
-   - Validate date/time formats, end > start, allowed time zones, etc.
-   - Validate device identifiers (names, IDs) and that targets exist.
+- Sets script name/version.
+- Loads `ScriptConfigMW.xml`.
+- Defines site server and mail settings (mostly from XML).
+- Defines output paths and log paths (hard-coded in script).
+- Imports required modules.
 
-2. **Target selection**
-   - Resolve devices from:
-     - a group
-     - a CSV
-     - a query/filter
-     - explicit device IDs
+### 2) Connect to MECM site
 
-3. **Maintenance window calculation**
-   - Normalize to a single time zone or UTC.
-   - Calculate next occurrence for recurring windows.
-   - Clamp/round times (e.g., to 15-minute boundaries) if required by an API/system.
+- Determines SiteCode using WMI query against the SiteServer:
+  - `root\SMS : SMS_ProviderLocation`
+- Calls `Get-CMModule` (likely a helper that imports ConfigurationManager module).
+- Switches location to the MECM PSDrive: `<SiteCode>:`.
 
-4. **Apply / update**
-   - Create or update the maintenance window object/setting.
-   - Assign it to devices/groups.
-   - Handle idempotency (re-running shouldn’t duplicate settings).
+### 3) Patch Tuesday / date calculations
 
-5. **Logging & output**
-   - Write summary to console
-   - Write detailed logs to a file
-   - Export results to CSV/JSON
+- Calculates Patch Tuesday for current month and next month via `Get-PatchTuesday`.
+- Defines the day the report should run:
+  - `ReportdayCompare = PatchTuesdayThisMonth + DaysAfterPatchTuesdayToReport`
 
----
+> Note: In the posted script `$DaysAfterPatchTuesdayToReport` is set to `-6`, which means “**6 days before Patch Tuesday**”, despite the variable name saying “After”.
 
-## How to use
+### 4) Exit early if month is disabled
 
-### Option A — Run the main script (recommended)
-1) Open PowerShell in this folder:
-```powershell
-cd .\DeviceMaintenanceWindows
-```
+- Checks if current month is in `$DisableReport`.
+- If disabled, logs and exits.
 
-2) If scripts depend on functions in a module in this folder, import it first (example):
-```powershell
-Import-Module .\DeviceMaintenanceWindows.psm1 -Force
-```
+> Note: In the posted script `$DisableReport` is an empty string. For this to work properly, it should be an array of month numbers, for example:
+> `@(7, 12)` to skip July and December.
 
-3) Run the script (example patterns):
-```powershell
-# Example
-.\Invoke-DeviceMaintenanceWindow.ps1
+### 5) Collect device maintenance window data (only on report day)
 
-# Or with parameters (example)
-.\Invoke-DeviceMaintenanceWindow.ps1 -Environment Prod -TimeZone "W. Europe Standard Time"
-```
+If today equals the report day:
 
-> Use `Get-Help` to discover parameters if comment-based help exists:
-```powershell
-Get-Help .\Invoke-DeviceMaintenanceWindow.ps1 -Full
-```
+- Reads all devices from a specific collection:
+  - `Get-CMCollectionMember -CollectionId $collectionidToCheck`
 
-### Option B — Use functions from your own automation
-If the folder provides a module (`.psm1`), import and call functions:
+For each device:
 
-```powershell
-Import-Module .\DeviceMaintenanceWindows.psm1 -Force
+1. Finds all collections the device belongs to:
+   - `Get-CMClientDeviceCollectionMembership -ComputerName <device> -SiteServer <siteserver> -SiteCode <sitecode>`
+2. Filters to collections where `ServiceWindowsCount -gt 0`
+3. For each such collection:
+   - Loads MWs with `Get-CMMaintenanceWindow -CollectionId <collectionId>`
+   - For each MW:
+     - If recurrence type is “1” (one recurrence type), only include MWs with StartTime between Patch Tuesday this month and Patch Tuesday next month.
+     - If recurrence type is “3”, include (no date filtering in posted script).
+4. Enriches each output row by querying an external SQL database:
+   - `Invoke-Sqlcmd -ServerInstance $dbserver -Database serverlista -Query <SELECT ...>`
+5. Produces result objects with fields:
+   - `Applikation`
+   - `Server`
+   - `Startdatum`
+   - `Starttid`
+   - `Varaktighet`
+   - `Deployment`
 
-# Example function calls (names will differ in your repo)
-$window = New-MaintenanceWindow -Start "2026-02-10 22:00" -End "2026-02-11 02:00" -TimeZone "UTC"
-Set-DeviceMaintenanceWindow -TargetGroupId "<group-guid>" -MaintenanceWindow $window
-```
+Finally:
 
----
+- Exports results to CSV.
+- Builds an HTML report page (PSWriteHTML).
 
-## Typical inputs
+If today is not the report day:
 
-### Date/time
-Prefer explicit, unambiguous values:
-- ISO-like: `2026-02-10 22:00`
-- Or UTC with `Z` if your functions accept it: `2026-02-10T22:00:00Z`
+- Logs “Date not equal … this report will run …”
+- Exits.
 
-### Device lists (CSV)
-A common pattern is a CSV with one of these columns:
-- `DeviceName`
-- `DeviceId`
-- `SerialNumber`
+### 6) Email report
 
-Example CSV:
-```csv
-DeviceName
-PC-001
-PC-002
-PC-003
-```
+- Creates a static HTML email body (does not embed the table).
+- Builds a recipient list from XML.
+- Attaches the generated HTML + CSV.
+- Sends email via `Send-MailKitMessage`.
 
 ---
 
-## Outputs / logs
+## Scheduling (recommended)
 
-Look for any of these patterns:
-- A `.\logs\` folder
-- A transcript file started with `Start-Transcript`
-- Exports like `Export-Csv` / `ConvertTo-Json`
+Create a Windows Scheduled Task on the MECM site server:
 
-If nothing else exists, you can wrap execution with a transcript:
-```powershell
-Start-Transcript -Path .\maintenancewindow-transcript.txt -Force
-.\Invoke-DeviceMaintenanceWindow.ps1
-Stop-Transcript
-```
+- Trigger: Daily (or a cadence you prefer)
+- Action: Start a program:
+  - `powershell.exe -ExecutionPolicy Bypass -File "<path>\Send-MMCM_DeviceMaintenanceWindows.ps1"`
+- Start in (important): The folder containing the script and `ScriptConfigMW.xml`
+- Run whether user is logged on or not
+- Use a service account with the permissions listed above
+
+Because the script self-checks the date (Patch Tuesday offset), it is safe to run daily.
 
 ---
 
 ## Troubleshooting
 
-### “Running scripts is disabled on this system”
-Use an appropriate execution policy (see Prerequisites).
+### Email recipients are empty / mail not sent
+Your XML stores recipients as attributes (`email="..."`), but the posted script appears to read them as elements.
 
-### Authentication failures / forbidden
-- Ensure you are signed in to the correct tenant/subscription.
-- Verify required roles/scopes.
-- If using Graph: confirm consent was granted for the scopes your script requests.
+Symptoms:
+- `$RecipientList` ends up empty.
+- Send-MailKitMessage may fail or send to nobody.
 
-### Time zone confusion
-- Confirm what the script expects (local time vs UTC).
-- If your org spans regions, standardize on UTC and convert for display only.
+Fix:
+- Update recipient parsing to read the `email` attribute.
 
-### Idempotency / duplicates
-If re-runs create duplicates, look for flags like:
-- `-WhatIf`
-- `-Confirm:$false`
-- `-Force`
-- `-UpdateExisting`
+### `Invoke-Sqlcmd` not found
+Install/import the SqlServer module:
+- Install: `Install-Module SqlServer`
+- Import: `Import-Module SqlServer`
+
+### MECM cmdlets not found / SiteCode drive missing
+- Ensure Configuration Manager console / module is installed.
+- Ensure `Get-CMModule` properly imports ConfigurationManager.
+- Verify WMI query to `SMS_ProviderLocation` works and returns a SiteCode.
+
+### Report never runs
+- Check `$DaysAfterPatchTuesdayToReport` (negative values run before Patch Tuesday).
+- Check locale issues with `ToShortDateString()` comparison.
+- Check logs for “Date not equal … will run …”.
 
 ---
 
-## Notes / customization
+## Notes / known mismatches between XML and script
 
-- If you have multiple window templates (e.g., “Pilot”, “Broad”, “Servers”), consider keeping them as JSON configs and selecting by name.
-- For CI/CD, prefer non-interactive auth and avoid prompting (set `-Confirm:$false` and provide all parameters explicitly).
+- The XML contains `LogfilePath`, `HTMLfilePath`, thresholds, and job definitions, but the posted script uses hardcoded file paths and does not reference those XML nodes.
+- The XML recipients use `email="..."` attributes; the script’s parsing method should be aligned with that structure.
+- Subject uses `$monthname` and `$year` in the posted script snippet; ensure these variables are defined in the script or adjust the subject.
 
 ---
 
-## Contributing
+## License / Disclaimer
 
-- Keep functions small and composable.
-- Add comment-based help to scripts/functions:
-  - `.SYNOPSIS`
-  - `.DESCRIPTION`
-  - `.PARAMETER`
-  - `.EXAMPLE`
-- Include a dry-run path (`-WhatIf`) for safety when changing assignments at scale.
+All scripts are offered **AS IS** with no warranty. Test in a non-production environment before using in production.
