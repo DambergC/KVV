@@ -90,31 +90,18 @@ The script requires a configuration file named `ScriptConfigPatchReleased.xml` i
 		<DisableReportMonth Number=""/>
 	</DisableReportMonth>
 	<Recipients>
-		<Recipients email="christian.damberg@kriminalvarden.se"/>
-		<Recipients email="Joakim.Stenqvist@kriminalvarden.se"/>
-		<Recipients email="Magnus.Jonsson6@kriminalvarden.se"/>
-		<Recipients email ="Keiarash.Naderifarsani@kriminalvarden.se"/>
-		<Recipients email="Christian.Brask@kriminalvarden.se"/>
-		<Recipients email="lars.garlin@kriminalvarden.se"/>
-		<Recipients email="sockv@kriminalvarden.se"/>
-		<Recipients email="Hans.Pettersson@kriminalvarden.se"/>
-		<Recipients email="Magnus.Eklof@kriminalvarden.se"/>
-		<Recipients email="Fredrik.Alderin@kriminalvarden.se"/>
-		<Recipients email="Peter.Overhem@kriminalvarden.se"/>
-		<Recipients email="Nicklas.Tigerberg@kriminalvarden.se"/>
-		<Recipients email="Jens.Wolinder@kriminalvarden.se"/>
-		<Recipients email="Peter.Bystrom@kriminalvarden.se"/>
+		<Recipients email="christian.damberg@domain.org"/>
 	</Recipients>
 	<UpdateDeployed>
 		<LimitDays>-25</LimitDays>
 		<UpdateGroupName>Server Patch Tuesday</UpdateGroupName>
 		<DaysAfterPatchToRun>1</DaysAfterPatchToRun>
 	</UpdateDeployed>
-	<SiteServer>Vntapp0780</SiteServer>
-	<Mailfrom>no-reply@kvv.se</Mailfrom>
-	<MailSMTP>smtp.kvv.se</MailSMTP>
+	<SiteServer>Siteserver</SiteServer> ## smsprovider
+	<Mailfrom>no-reply@domain.org</Mailfrom>
+	<MailSMTP>smtp.domain.org</MailSMTP>
 	<MailPort>25</MailPort>
-	<MailCustomer>Kriminalvarden - IT</MailCustomer>
+	<MailCustomer>My company</MailCustomer>
 </Configuration>
 ```
 
