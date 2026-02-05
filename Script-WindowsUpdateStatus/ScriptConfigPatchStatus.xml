@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+	<Logfile>
+		<Path>G:\Scripts\Logfiles\</Path>
+		<Name>WindowsUpdateScript.log</Name>
+		<Logfilethreshold>2000000</Logfilethreshold>
+	</Logfile>
+	<HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
+	<RunScript>
+		<Job DeploymentID="16777362" Offsetdays="2" Description="Grupp100"/>
+		<Job DeploymentID="16777363" Offsetdays="8" Description="Grupp200"/>
+		<Job DeploymentID="16777364" Offsetdays="15" Description="Grupp300"/>
+	</RunScript>
+	<DisableReportMonth>
+		<DisableReportMonth Number=""/>
+		<DisableReportMonth Number=""/>
+		<DisableReportMonth Number=""/>
+	</DisableReportMonth>
+	<Recipients>
+		<Recipients email="christian.damberg@dopmain.org"/>
+	</Recipients>
+	<UpdateDeployed>
+		<LimitDays>-25</LimitDays>
+		<UpdateGroupName>Server Patch Tuesday</UpdateGroupName>
+		<DaysAfterPatchToRun>1</DaysAfterPatchToRun>
+	</UpdateDeployed>
+	<SiteServer>siteserver</SiteServer>
+	<Mailfrom>no-reply@domain.org</Mailfrom>
+	<MailSMTP>smtp.domain.org</MailSMTP>
+	<MailPort>25</MailPort>
+	<MailCustomer>My Company</MailCustomer>
+</Configuration>
