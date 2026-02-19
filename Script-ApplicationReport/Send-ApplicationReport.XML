@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
+
+  <!-- Global / default settings -->
+  <SQLServer>ServerName</SQLServer>
+  <Mailfrom>no-reply@shelby.org</Mailfrom>
+  <MailSMTP>smtp.shelby.org</MailSMTP>
+  <MailPort>25</MailPort>
+  <MailCustomer>Shelby Company Limited</MailCustomer>
+
+  <!-- Application-specific configuration -->
+  <Applications>
+    <Application Name="Check Point">
+      <!-- Optional: store the SQL filter or any other identifier -->
+      <ProductFilter>Check Point%</ProductFilter>
+      <Recipients>
+        <Recipient email="thomas.shelby@shelby.org" attach="true" />
+      </Recipients>
+    </Application>
+    <Application Name="Google Chrome">
+      <ProductFilter>Google Chrome%</ProductFilter>
+      <Recipients>
+        <Recipient email="thomas.shelby@shelby.org" attach="False" />
+      </Recipients>
+    </Application>
+  </Applications>
+</Configuration>
