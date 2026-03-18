@@ -1,8 +1,8 @@
-# Send-DPstatus.ps1 (DP Status / Maintenance Mode Automation)
+# Send-CheckDPStatus (DP Status / Maintenance Mode Automation)
 
 ## Overview
 
-`Send-DPstatus.ps1` is intended to run as a **scheduled task** on a Microsoft Endpoint Configuration Manager (MECM/SCCM) site server.
+`Send-CheckDPStatus.ps1` is intended to run as a **scheduled task** on a Microsoft Endpoint Configuration Manager (MECM/SCCM) site server.
 
 It performs a health check of all **Distribution Points (DPs)** by pinging each DP server and then:
 
@@ -20,6 +20,40 @@ It performs a health check of all **Distribution Points (DPs)** by pinging each 
   - If it is **not** in Maintenance Mode, it is left unchanged and is not added to the report
 
 Finally, the script generates an **HTML email report** (via `ConvertTo-Html`) and sends it using the **Send-MailKitMessage** PowerShell module.
+
+---
+
+## Configuration via XML
+
+This folder also contains an example configuration file:
+
+- `Send-CheckDPStatus.XML`
+
+The XML lets you externalize environment-specific settings (site server, DP groups, mail, logging, etc.) instead of hard-coding them in the script.
+
+### XML structure (example)
+
+- `<SiteServer>`: MECM site server to connect to.
+- `<DPGroups>`:
+  - `<Maintenance>`: name of the DP group used for maintenance.
+  - `<Production>`: name of the DP group used for normal/production.
+- `<Reachability>`:
+  - `<Method>`: reachability method (e.g. `ICMP`).
+  - `<PingCount>`: number of pings per DP.
+- `<Mail>`:
+  - `<SMTP>` / `<Port>`: SMTP relay settings.
+  - `<UseSecureConnectionIfAvailable>`: whether to use TLS if available.
+  - `<From>`: sender address.
+  - `<SubjectPrefix>`: subject prefix for the status mail.
+  - `<Recipients>`: one or more `<Recipient email="..." />` entries.
+- `<Report>`:
+  - `<CustomerName>`: shown in the HTML report.
+- `<Logging>`:
+  - `<Logfile>`: log file path.
+- `<General>`:
+  - `<DryRun>`: when `true`, intended to run without making changes.
+
+> Note: Make sure the PowerShell script actually reads and applies these XML settings. If you update the script to load XML configuration, keep the XML schema in sync.
 
 ---
 
@@ -83,6 +117,7 @@ Writes a timestamped entry to the logfile defined in `$LogFile`.
 - Appends line to log file using `Add-Content`
 
 **Example:**
+
 ```powershell
 Write-Log -LogString "DP01 not online"
 ```
@@ -102,9 +137,10 @@ Finds the MECM **Site Code** by querying WMI class `SMS_ProviderLocation` in nam
 - Permissions to query WMI on site server
 
 **Example:**
+
 ```powershell
 $sitecode = Get-CMSiteCode
-Set-Location "$sitecode`:"
+Set-Location "$sitecode`:" 
 ```
 
 ---
@@ -149,6 +185,7 @@ So it must run on a machine with the MECM console installed and the environment 
   - https://github.com/EvotecIT/PSWriteHTML *(imported but not required unless you expand reporting)*
 
 Install (example):
+
 ```powershell
 Install-Module Send-MailKitMessage -Scope AllUsers
 Install-Module PSWriteHTML -Scope AllUsers
@@ -187,29 +224,34 @@ An HTML email is sent with:
 
 These are behaviors to be aware of in the current script:
 
-1. **Assignment used instead of comparison**
+1. **Assignment used instead of comparison**  
    In the offline section, this line uses `=` instead of `-eq`:
+
    ```powershell
    If($DPStatus.MaintenanceMode = '0'){
    ```
+
    That assigns instead of compares and will produce unintended behavior. It should be:
+
    ```powershell
    If ($DPStatus.MaintenanceMode -eq 0) {
    ```
 
-2. **`$limit` and `dateposted` are referenced but not defined**
+2. **`$limit` and `dateposted` are referenced but not defined**  
    The HTML body creation includes:
+
    ```powershell
    $result | Sort-Object dateposted -Descending | where-object { $_.dateposted -ge $limit }
    ```
+
    The objects created do not include `dateposted`, and `$limit` is never set. In practice this can cause errors or empty output.
    Recommended: remove these filters or add a timestamp property when creating `$object`.
 
-3. **PSWriteHTML is imported but not used**
+3. **PSWriteHTML is imported but not used**  
    The report is produced via `ConvertTo-Html` and custom CSS.
 
-4. **Credential block is defined but commented out in Parameters**
-   A PSCredential object is created but the `"Credential"` parameter is commented out. If your SMTP requires auth, you must enable it.
+4. **Credential block is defined but commented out in Parameters**  
+   A PSCredential object is created but the "Credential" parameter is commented out. If your SMTP requires auth, you must enable it.
 
 ---
 
