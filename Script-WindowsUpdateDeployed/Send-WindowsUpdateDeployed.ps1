@@ -4,45 +4,35 @@
    Updatestatus for Windows update thru MECM
 
 .DESCRIPTION
-   Creates an HTML report for one or more Software Update deployments specified in an XML file and sends an email.
+   Creates an HTML report for one Software Update Group specified in an XML file and sends an email.
    Intended to run as a scheduled task on the site server.
-
-   This version follows the same structure as Script-DPstatus/Send-CheckDPStatus.ps1:
-   - Configured via XML (no parameters)
-   - Robust XML helpers + validation
-   - Module import helpers
-   - Consistent logging
 
    Requires:
    - ConfigurationManager (ConfigMgr console installed, SMS_ADMIN_UI_PATH set)
    - Send-MailKitMessage
-
-   Optional:
-   - PSWriteHTML (not required; this script uses ConvertTo-Html like the original)
+   - PatchManagementSupportTools (for Get-PatchTuesday)
 
    Expected XML file: ScriptConfigPatchReleased.xml (next to script)
-
-.NOTES
-   - Scripts are offered AS IS with no warranty.
-   - Test in non-production first.
 -------------------------------------------------------------------------------------------------------------------------
 #>
 
 $ErrorActionPreference = 'Stop'
 
 $scriptname = $MyInvocation.MyCommand.Name
-$today      = (Get-Date).ToString('yyyy-MM-dd')
 
 #########################################################
 # Load configuration XML
 #########################################################
-$xmlPath = Join-Path -Path $PSScriptRoot -ChildPath 'ScriptConfigPatchReleased.xml'
+$xmlPath = Join-Path -Path $PSScriptRoot -ChildPath 'Send-WindowsUpdateDeployedv2.xml'
 if (-not (Test-Path -LiteralPath $xmlPath)) {
     throw "Missing configuration XML: $xmlPath"
 }
 
 [xml]$xml = Get-Content -LiteralPath $xmlPath
 
+#########################################################
+# XML helpers (PS 5.1 compatible)
+#########################################################
 function Get-XmlText {
     param(
         [Parameter(Mandatory)][object]$Node,
@@ -50,22 +40,13 @@ function Get-XmlText {
     )
     $n = $Node.SelectSingleNode($Path)
     if (-not $n) { return $null }
+
     $t = $n.InnerText
     if ($null -eq $t) { return $null }
+
     $t = $t.Trim()
     if ($t -eq '') { return $null }
     return $t
-}
-
-function Get-XmlBool {
-    param(
-        [Parameter(Mandatory)][object]$Node,
-        [Parameter(Mandatory)][string]$Path,
-        [Parameter()][bool]$Default = $false
-    )
-    $t = Get-XmlText -Node $Node -Path $Path
-    if ($null -eq $t) { return $Default }
-    try { return [System.Convert]::ToBoolean($t) } catch { return $Default }
 }
 
 function Get-XmlInt {
@@ -76,6 +57,7 @@ function Get-XmlInt {
     )
     $t = Get-XmlText -Node $Node -Path $Path
     if ($null -eq $t) { return $Default }
+
     $i = 0
     if ([int]::TryParse($t, [ref]$i)) { return $i }
     return $Default
@@ -90,20 +72,39 @@ function Get-XmlIntArray {
     $nodes = $Node.SelectNodes($Path)
     if (-not $nodes) { return @() }
 
-    $values = foreach ($n in @($nodes)) {
+    $values = @()
+    foreach ($n in @($nodes)) {
         $t = $n.InnerText
         if ($null -eq $t) { continue }
+
         $t = $t.Trim()
         if ($t -eq '') { continue }
+
         $i = 0
-        if ([int]::TryParse($t, [ref]$i)) { $i }
+        if ([int]::TryParse($t, [ref]$i)) {
+            $values += $i
+        }
     }
 
     return @($values)
 }
 
+function Add-UniqueString {
+    param(
+        [Parameter(Mandatory)][System.Collections.ArrayList]$List,
+        [Parameter(Mandatory)][string]$Value
+    )
+    # case-insensitive unique add for PS5.1
+    foreach ($existing in $List) {
+        if ($existing -and ($existing.ToString().ToLowerInvariant() -eq $Value.ToLowerInvariant())) {
+            return
+        }
+    }
+    [void]$List.Add($Value)
+}
+
 #########################################################
-# Read configuration values (tolerant of old/new XML schema)
+# Read configuration values
 #########################################################
 # Logging
 $Logfilepath      = Get-XmlText -Node $xml -Path '/Configuration/Logfile/Path'
@@ -118,9 +119,9 @@ if ($Logfilepath -and $logfilename) {
 # General / schedule
 $SiteServer = Get-XmlText -Node $xml -Path '/Configuration/SiteServer'
 
-$LimitDays                   = Get-XmlInt  -Node $xml -Path '/Configuration/UpdateDeployed/LimitDays' -Default 0
-$DaysAfterPatchTuesdayToReport = Get-XmlInt -Node $xml -Path '/Configuration/UpdateDeployed/DaysAfterPatchToRun' -Default 0
-$UpdateGroupName             = Get-XmlText -Node $xml -Path '/Configuration/UpdateDeployed/UpdateGroupName'
+$LimitDays                    = Get-XmlInt  -Node $xml -Path '/Configuration/UpdateDeployed/LimitDays' -Default 0
+$DaysAfterPatchTuesdayToReport = Get-XmlInt  -Node $xml -Path '/Configuration/UpdateDeployed/DaysAfterPatchToRun' -Default 0
+$UpdateGroupName              = Get-XmlText -Node $xml -Path '/Configuration/UpdateDeployed/UpdateGroupName'
 
 # Mail
 $SMTP           = Get-XmlText -Node $xml -Path '/Configuration/MailSMTP'
@@ -128,20 +129,52 @@ $MailFrom       = Get-XmlText -Node $xml -Path '/Configuration/Mailfrom'
 $MailPortnumber = Get-XmlInt  -Node $xml -Path '/Configuration/MailPort' -Default 25
 $MailCustomer   = Get-XmlText -Node $xml -Path '/Configuration/MailCustomer'
 
-# Recipients (support both the original structure and a more explicit one)
-$recipientNodes = $xml.SelectNodes('/Configuration/Recipients/Recipients/Email')
+#########################################################
+# Recipients (support both schemas; PS 5.1 compatible)
+#########################################################
 $MailTo = @()
-foreach ($r in @($recipientNodes)) {
-    $email = $null
-    if ($r -and $r.InnerText) {
-        $email = $r.InnerText.Trim()
-    }
-    if ($email) { $MailTo += $email }
-}
-$MailTo = $MailTo | Select-Object -Unique
 
-# Disable report months
-$DisableReportMonths = Get-XmlIntArray -Node $xml -Path '/Configuration/DisableReportMonth/DisableReportMonth/Number'
+# A: /Configuration/Recipients/Recipients/Email
+$recipientEmailNodes = $xml.SelectNodes('/Configuration/Recipients/Recipients/Email')
+foreach ($n in @($recipientEmailNodes)) {
+    $email = $null
+    if ($n -and $n.InnerText) { $email = $n.InnerText.Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($email)) { $MailTo += $email }
+}
+
+# B: /Configuration/Recipients/Recipients[@email]
+$recipientAttrNodes = $xml.SelectNodes('/Configuration/Recipients/Recipients[@email]')
+foreach ($n in @($recipientAttrNodes)) {
+    $email = $null
+    if ($n) { $email = $n.GetAttribute('email') }
+    if ($email) { $email = $email.Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($email)) { $MailTo += $email }
+}
+
+# unique (case-insensitive enough for emails in most environments)
+$MailTo = $MailTo | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+
+#########################################################
+# Disable report months (support both schemas; PS 5.1 compatible)
+#########################################################
+$DisableReportMonths = @()
+
+# A: .../Number
+$DisableReportMonths += Get-XmlIntArray -Node $xml -Path '/Configuration/DisableReportMonth/DisableReportMonth/Number'
+
+# B: attribute Number="x"
+$monthAttrNodes = $xml.SelectNodes('/Configuration/DisableReportMonth/DisableReportMonth[@Number]')
+foreach ($n in @($monthAttrNodes)) {
+    $t = $null
+    if ($n) { $t = $n.GetAttribute('Number') }
+    if ($t) { $t = $t.Trim() }
+
+    $i = 0
+    if (-not [string]::IsNullOrWhiteSpace($t) -and [int]::TryParse($t, [ref]$i)) {
+        $DisableReportMonths += $i
+    }
+}
+$DisableReportMonths = $DisableReportMonths | Select-Object -Unique
 
 #########################################################
 # Basic validation (log file is optional)
@@ -158,7 +191,7 @@ foreach ($required in @(
 }
 
 if ($MailTo.Count -eq 0) {
-    throw "No recipients found in XML at /Configuration/Recipients/Recipients/Email"
+    throw "No recipients found in XML. Supported: /Configuration/Recipients/Recipients/Email and /Configuration/Recipients/Recipients[@email]"
 }
 
 Write-Host "Script: $scriptname" -ForegroundColor Cyan
@@ -280,12 +313,15 @@ if (-not (Get-Module -Name ConfigurationManager)) {
 
 Ensure-Module -Name 'Send-MailKitMessage' -ImportScript { Import-Module Send-MailKitMessage }
 
-# Optional modules used elsewhere in the repo
-if (Get-Module -Name PSWriteHTML -ListAvailable) {
-    Import-Module PSWriteHTML -ErrorAction SilentlyContinue
+# PatchManagementSupportTools provides Get-PatchTuesday
+if (-not (Get-Command -Name Get-PatchTuesday -ErrorAction SilentlyContinue)) {
+    if (Get-Module -Name PatchManagementSupportTools -ListAvailable) {
+        Import-Module PatchManagementSupportTools -ErrorAction SilentlyContinue
+    }
 }
-if (Get-Module -Name PatchManagementSupportTools -ListAvailable) {
-    Import-Module PatchManagementSupportTools -ErrorAction SilentlyContinue
+
+if (-not (Get-Command -Name Get-PatchTuesday -ErrorAction SilentlyContinue)) {
+    throw "Get-PatchTuesday was not found. Install/import PatchManagementSupportTools or adjust the script."
 }
 
 if (Get-Command -Name Get-CMModule -ErrorAction SilentlyContinue) {
@@ -293,7 +329,7 @@ if (Get-Command -Name Get-CMModule -ErrorAction SilentlyContinue) {
 }
 
 #########################################################
-# Connect to CM PSDrive
+# Connect to CM PSDrive + main logic
 #########################################################
 $sitecode = Get-CMSiteCode -ComputerName $SiteServer
 $setSiteCode = "$sitecode`:"
@@ -309,68 +345,31 @@ try {
 
 try {
     #########################################################
-    # Section to extract monthname, year and weeknumbers
+    # Patch Tuesday gating (robust date compare)
     #########################################################
-    function Get-ISO8601Week {
-        # Adapted from https://stackoverflow.com/a/43736741/444172
-        [CmdletBinding()]
-        param(
-            [Parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-            [datetime]$DateTime
-        )
-        process {
-            foreach ($_DateTime in $DateTime) {
-                $resultObject = [pscustomobject]@{
-                    Year       = $null
-                    WeekNumber = $null
-                    WeekString = $null
-                    DateString = $_DateTime.ToString('yyyy-MM-dd   dddd')
-                }
-
-                $dayOfWeek = $_DateTime.DayOfWeek.value__
-                if ($dayOfWeek -eq 0) { $dayOfWeek = 7 }
-
-                $_DateTime = $_DateTime.AddDays((4 - $dayOfWeek))
-
-                $resultObject.WeekNumber = [math]::Ceiling($_DateTime.DayOfYear / 7)
-                $resultObject.Year       = $_DateTime.Year
-                $resultObject.WeekString = "$($_DateTime.Year)-W$("$($resultObject.WeekNumber)".PadLeft(2, '0'))"
-
-                Write-Output $resultObject
-            }
-        }
-    }
-
     $monthname = (Get-Culture).DateTimeFormat.GetMonthName((Get-Date).Month)
     $year      = (Get-Date).Year
 
-    $todayDefault = Get-Date
-    $todayshort   = $todayDefault.ToShortDateString()
+    $today = (Get-Date).Date  # Date-only
 
-    # Patch Tuesday (requires PatchManagementSupportTools, but keep behavior compatible)
-    if (-not (Get-Command -Name Get-PatchTuesday -ErrorAction SilentlyContinue)) {
-        throw "Get-PatchTuesday was not found. Install/import PatchManagementSupportTools or adjust the script."
-    }
+    $patchTuesdayThisMonth = Get-PatchTuesday -Month $today.Month -Year $today.Year
+    $runDate = $patchTuesdayThisMonth.Date.AddDays($DaysAfterPatchTuesdayToReport)
 
-    $thismonth = $todayDefault.Month
-    $patchTuesdayThisMonth = Get-PatchTuesday -Month $thismonth -Year $todayDefault.Year
-
-    $ReportdayCompare = ($patchTuesdayThisMonth.AddDays($DaysAfterPatchTuesdayToReport)).ToString('yyyy-MM-dd')
-
-    if ($DisableReportMonths -and ($todayDefault.Month -in $DisableReportMonths)) {
-        Write-Log -LogString "$scriptname - This month is skipped"
+    if ($DisableReportMonths -and ($today.Month -in $DisableReportMonths)) {
+        Write-Log -LogString "$scriptname - This month ($($today.Month)) is skipped (DisableReportMonths)."
         Write-Log -LogString "$scriptname - Script exit!"
         return
     }
 
-    if ($todayshort -ne $ReportdayCompare) {
-        Write-Log -LogString "========= $scriptname - Date not equal patchtuesday $($patchTuesdayThisMonth.ToShortDateString()) and its now $todayshort. This report will run $ReportdayCompare ========"
+    if ($today -ne $runDate) {
+        Write-Log -LogString ("========= {0} - Date not equal PatchTuesday {1} and it's now {2}. This report will run {3} ========" -f `
+            $scriptname, $patchTuesdayThisMonth.ToShortDateString(), $today.ToShortDateString(), $runDate.ToString('yyyy-MM-dd'))
         Write-Log -LogString "========================== $scriptname - Script exit! =========================="
         return
     }
 
     #########################################################
-    # Gather updates
+    # Gather updates from Software Update Group
     #########################################################
     Write-Log -LogString "=====================Processing Software Update Group $UpdateGroupName=========================="
 
@@ -378,7 +377,7 @@ try {
     $updates = Get-CMSoftwareUpdate -Fast -UpdateGroupName $UpdateGroupName
 
     foreach ($item in $updates) {
-        $result += [pscustomobject]@{
+        $result += New-Object psobject -Property @{
             ArticleID            = $item.ArticleID
             Title                = $item.LocalizedDisplayName
             LocalizedDescription = $item.LocalizedDescription
@@ -393,64 +392,48 @@ try {
     $UpdatesFound = $result | Sort-Object DatePosted -Descending | Where-Object { $_.DatePosted -ge $limit }
 
     #########################################################
-    # Build HTML report (ConvertTo-Html as original)
+    # Build HTML report (ConvertTo-Html)
     #########################################################
     $header = @"
 <style>
-
     th {
-
         font-family: Arial, Helvetica, sans-serif;
         color: White;
         font-size: 12px;
         border: 1px solid black;
         padding: 3px;
         background-color: Black;
-
     }
     p {
-
         font-family: Arial, Helvetica, sans-serif;
         color: black;
         font-size: 12px;
-
     }
     ol {
-
         font-family: Arial, Helvetica, sans-serif;
         list-style-type: square;
         color: black;
         font-size: 12px;
-
     }
     tr {
-
         font-family: Arial, Helvetica, sans-serif;
         color: black;
         font-size: 11px;
         vertical-align: text-top;
-
     }
-
-    body {
-        background-color: lightgray;
-      }
-      table {
+    body { background-color: lightgray; }
+    table {
         border: 1px solid black;
         border-collapse: collapse;
-      }
-
-      td {
+    }
+    td {
         border: 1px solid black;
         padding: 5px;
         background-color: #E0F3F7;
-      }
-
+    }
 </style>
 "@
 
-    # Keep the existing embedded logo from the original script by leaving it in XML or externalizing.
-    # (If the logo is needed inline, add it back here.)
     $pre = @"
 <p><h1>Windows updates $monthname $year</h1><br>
 <p>The following updates from Microsoft are deployed this month.</p>
@@ -463,7 +446,7 @@ try {
     $UpdatesFoundHtml = $UpdatesFound | ConvertTo-Html -Title "Downloaded patches" -PreContent $pre -PostContent $post -Head $header
 
     #########################################################
-    # Mailsettings (Send-MailKitMessage)
+    # Send mail (Send-MailKitMessage)
     #########################################################
     $UseSecureConnectionIfAvailable = $false
 
@@ -479,9 +462,9 @@ try {
     $Subject  = [string]"WindowsUpdate $MailCustomer $monthname $year"
     $HTMLBody = [string]$UpdatesFoundHtml
 
-    $AttachmentList = [System.Collections.Generic.List[string]]::new()
+    $AttachmentList = New-Object 'System.Collections.Generic.List[string]'
 
-    $Parameters = @{ 
+    $Parameters = @{
         UseSecureConnectionIfAvailable = $UseSecureConnectionIfAvailable
         SMTPServer                    = $SMTPServer
         Port                          = $Port
@@ -494,8 +477,9 @@ try {
 
     Send-MailKitMessage @Parameters
 
-    Write-Log -LogString "========================== $scriptname - Mail on it´s way to $RecipientList "
+    Write-Log -LogString ("========================== {0} - Mail on it´s way to {1}" -f $scriptname, ($MailTo -join ', '))
     Write-Log -LogString "========================== $scriptname - Script exit! =========================="
-} finally {
+}
+finally {
     Pop-Location
 }
