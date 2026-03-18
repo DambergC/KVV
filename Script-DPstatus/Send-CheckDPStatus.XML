@@ -1,0 +1,39 @@
+   <Configuration>
+     <SiteServer>vntsql0299</SiteServer>
+     <DPGroups>
+       <Maintenance>Maintenance</Maintenance>
+       <Production>VS DPs</Production>
+     </DPGroups>
+
+     <Reachability>
+       <Method>ICMP</Method>
+       <PingCount>3</PingCount>
+     </Reachability>
+
+     <Mail>
+       <SMTP>smtp.kvv.se</SMTP>
+       <Port>25</Port>
+       <UseSecureConnectionIfAvailable>false</UseSecureConnectionIfAvailable>
+       <From>no-reply@kvv.se</From>
+       <SubjectPrefix>Kontroll av Distributionspunkter</SubjectPrefix>
+       <Recipients>
+         <Recipient email="christian.damberg@kriminalvarden.se" />
+		 <Recipient email="magnus.jonsson6@kriminalvarden.se" />
+		 <Recipient email="Keiarash.Naderifarsani@kriminalvarden.se" />
+		 <Recipient email="it.andralinjen@kriminalvarden.se" />
+		 <Recipient email="HK.IT.CMKalendern@kriminalvarden.se" />
+        </Recipients>
+     </Mail>
+
+     <Report>
+       <CustomerName>Kriminalvården</CustomerName>
+     </Report>
+
+     <Logging>
+       <Logfile>G:\Scripts\Logfiles\DPLogfile.log</Logfile>
+     </Logging>
+
+     <General>
+  <DryRun>true</DryRun>
+</General>
+   </Configuration>
