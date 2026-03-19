@@ -4,22 +4,31 @@
    Updatestatus for Windows update thru MECM
 
 .DESCRIPTION
-   Creates an HTML report for one Software Update Group specified in an XML file and sends an email.
+   Creates an HTML report for one or MORE Software Update Groups specified in an XML file and sends ONE email.
    Intended to run as a scheduled task on the site server.
 
    Requires:
    - PSWriteHTML (for New-HTML)
    - Send-MailKitMessage
-   - (Your MECM modules/logic to collect update deployment data)
+   - ConfigurationManager (MECM Console) so Get-CMSoftwareUpdate works and a CMSite PSDrive exists.
 
    Expected XML file: Send-WindowsUpdateDeployedv2.xml (next to script)
+
+   Scheduling behavior:
+   - Only runs if: Today == (Patch Tuesday of current month + DaysAfterPatchToRun)
+   - Patch Tuesday defined as the second Tuesday of the month.
+
+   Reporting behavior:
+   - Supports multiple Software Update Groups in XML and generates one table/section per group.
+   - Applies LimitDays by filtering DatePosted >= (Today + LimitDays). (LimitDays is typically negative)
 -------------------------------------------------------------------------------------------------------------------------
 #>
 
 $ErrorActionPreference = 'Stop'
 
 $scriptname = $MyInvocation.MyCommand.Name
-$today      = (Get-Date).ToString('yyyy-MM-dd')
+$todayDate  = (Get-Date).Date
+$today      = $todayDate.ToString('yyyy-MM-dd')
 
 #########################################################
 # Load configuration XML
@@ -104,7 +113,26 @@ $SiteServer = Get-XmlText -Node $xml -Path '/Configuration/SiteServer'
 
 $LimitDays                    = Get-XmlInt  -Node $xml -Path '/Configuration/UpdateDeployed/LimitDays' -Default 0
 $DaysAfterPatchTuesdayToReport = Get-XmlInt  -Node $xml -Path '/Configuration/UpdateDeployed/DaysAfterPatchToRun' -Default 0
-$UpdateGroupName              = Get-XmlText -Node $xml -Path '/Configuration/UpdateDeployed/UpdateGroupName'
+
+# Software Update Group(s)
+# Preferred schema:
+# /Configuration/UpdateDeployed/UpdateGroups/UpdateGroupName
+# Backwards compatible: /Configuration/UpdateDeployed/UpdateGroupName
+$UpdateGroupNames = @()
+
+$groupNodes = $xml.SelectNodes('/Configuration/UpdateDeployed/UpdateGroups/UpdateGroupName')
+foreach ($n in @($groupNodes)) {
+    $t = $null
+    if ($n -and $n.InnerText) { $t = $n.InnerText.Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($t)) { $UpdateGroupNames += $t }
+}
+
+if ($UpdateGroupNames.Count -eq 0) {
+    $single = Get-XmlText -Node $xml -Path '/Configuration/UpdateDeployed/UpdateGroupName'
+    if (-not [string]::IsNullOrWhiteSpace($single)) { $UpdateGroupNames += $single }
+}
+
+$UpdateGroupNames = $UpdateGroupNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
 
 # Mail
 $SMTP           = Get-XmlText -Node $xml -Path '/Configuration/MailSMTP'
@@ -134,7 +162,6 @@ foreach ($n in @($recipientAttrNodes)) {
     if (-not [string]::IsNullOrWhiteSpace($email)) { $MailTo += $email }
 }
 
-# unique
 $MailTo = $MailTo | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
 
 #########################################################
@@ -156,24 +183,6 @@ foreach ($n in @($monthAttrNodes)) {
 $DisableReportMonths = $DisableReportMonths | Select-Object -Unique
 
 #########################################################
-# Basic validation
-#########################################################
-foreach ($required in @(
-    @{ Name = 'SiteServer'; Value = $SiteServer },
-    @{ Name = 'SMTP'; Value = $SMTP },
-    @{ Name = 'MailFrom'; Value = $MailFrom },
-    @{ Name = 'MailCustomer'; Value = $MailCustomer },
-    @{ Name = 'UpdateGroupName'; Value = $UpdateGroupName }
-)) {
-    if ([string]::IsNullOrWhiteSpace($required.Value)) {
-        throw "Missing required XML configuration value: $($required.Name)"
-    }
-}
-if ($MailTo.Count -eq 0) {
-    throw "No recipients found in XML. Supported: /Configuration/Recipients/Recipients/Email and /Configuration/Recipients/Recipients[@email]"
-}
-
-#########################################################
 # Logging helpers (optional)
 #########################################################
 function Write-Log {
@@ -190,6 +199,28 @@ function Write-Log {
 }
 
 Write-Log -LogString "======================= $scriptname - Script START ============================="
+
+#########################################################
+# Basic validation (FIXED: no single UpdateGroupName)
+#########################################################
+foreach ($required in @(
+    @{ Name = 'SiteServer'; Value = $SiteServer },
+    @{ Name = 'SMTP'; Value = $SMTP },
+    @{ Name = 'MailFrom'; Value = $MailFrom },
+    @{ Name = 'MailCustomer'; Value = $MailCustomer }
+)) {
+    if ([string]::IsNullOrWhiteSpace($required.Value)) {
+        throw "Missing required XML configuration value: $($required.Name)"
+    }
+}
+
+if ($UpdateGroupNames.Count -eq 0) {
+    throw "No Software Update Groups found in XML. Supported: /Configuration/UpdateDeployed/UpdateGroups/UpdateGroupName or /Configuration/UpdateDeployed/UpdateGroupName"
+}
+
+if ($MailTo.Count -eq 0) {
+    throw "No recipients found in XML. Supported: /Configuration/Recipients/Recipients/Email and /Configuration/Recipients/Recipients[@email]"
+}
 
 #########################################################
 # Module imports
@@ -225,18 +256,40 @@ if ($DisableReportMonths -contains $currentMonthNumber) {
     return
 }
 
+#########################################################
+# Patch Tuesday + scheduling
+#########################################################
+function Get-PatchTuesday {
+    [CmdletBinding()]
+    param(
+        [int]$Month = (Get-Date).Month,
+        [int]$Year  = (Get-Date).Year
+    )
 
+    # Second Tuesday of the month: first Tuesday on/after the 8th
+    $d = Get-Date -Year $Year -Month $Month -Day 8 -Hour 0 -Minute 0 -Second 0
+    while ($d.DayOfWeek -ne 'Tuesday') { $d = $d.AddDays(1) }
+    return $d.Date
+}
+
+$patchTuesday = Get-PatchTuesday -Month (Get-Date).Month -Year (Get-Date).Year
+$runDate      = $patchTuesday.AddDays($DaysAfterPatchTuesdayToReport).Date
+
+if ($todayDate -ne $runDate) {
+    Write-Log -LogString "Date not equal. PatchTuesday=$($patchTuesday.ToString('yyyy-MM-dd')), RunDate=$($runDate.ToString('yyyy-MM-dd')), Today=$today. Exiting."
+    return
+}
+
+Write-Log -LogString "Schedule match. PatchTuesday=$($patchTuesday.ToString('yyyy-MM-dd')) DaysAfterPatchTuesdayToReport=$DaysAfterPatchTuesdayToReport => RunDate=$($runDate.ToString('yyyy-MM-dd')). Continuing."
 
 #########################################################
 # Function to collect data about updates
 #########################################################
-function Get-UpdatesDeployedThisMonth {
+function Get-UpdatesDeployed {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$UpdateGroupName,
-        [Parameter()][int]$Month = (Get-Date).Month,
-        [Parameter()][int]$Year  = (Get-Date).Year,
-        [Parameter()][datetime]$SinceDate
+        [Parameter(Mandatory)][datetime]$SinceDate
     )
 
     if (-not (Get-Command -Name Get-CMSoftwareUpdate -ErrorAction SilentlyContinue)) {
@@ -256,13 +309,7 @@ function Get-UpdatesDeployedThisMonth {
         Set-Location -Path $cmPath
 
         $updates = @(Get-CMSoftwareUpdate -Fast -UpdateGroupName $UpdateGroupName)
-
-        $filtered = if ($PSBoundParameters.ContainsKey('SinceDate') -and $SinceDate) {
-            @($updates | Where-Object { $_.DatePosted -and ($_.DatePosted -ge $SinceDate) })
-        }
-        else {
-            @($updates | Where-Object { $_.DatePosted -and ($_.DatePosted.Month -eq $Month) -and ($_.DatePosted.Year -eq $Year) })
-        }
+        $filtered = @($updates | Where-Object { $_.DatePosted -and ($_.DatePosted -ge $SinceDate) })
 
         $rows = foreach ($u in ($filtered | Sort-Object DatePosted -Descending)) {
             [pscustomobject]@{
@@ -270,7 +317,6 @@ function Get-UpdatesDeployedThisMonth {
                 Title                = $u.LocalizedDisplayName
                 LocalizedDescription = $u.LocalizedDescription
                 DatePosted           = $u.DatePosted
-                Deployed             = $u.IsDeployed
                 URL                  = $u.LocalizedInformativeURL
                 Severity             = $u.SeverityName
             }
@@ -282,19 +328,32 @@ function Get-UpdatesDeployedThisMonth {
         Pop-Location
     }
 }
-#########################################################
-# Collect Windows Update deployment data
-#########################################################
-$updateRows = Get-UpdatesDeployedThisMonth -UpdateGroupName $UpdateGroupName
-$updateCount = @($updateRows).Count
 
 #########################################################
-# Build HTML report (PSWriteHTML) - SAME PATTERN AS DPSTATUS
+# Collect Windows Update deployment data (MULTI GROUP)
+#########################################################
+$sinceDate = (Get-Date).Date.AddDays($LimitDays)
+Write-Log -LogString "Using SinceDate=$($sinceDate.ToString('yyyy-MM-dd')) from LimitDays=$LimitDays"
+
+$allGroupResults = foreach ($g in $UpdateGroupNames) {
+    Write-Log -LogString "Processing Software Update Group: $g"
+    $rows = Get-UpdatesDeployed -UpdateGroupName $g -SinceDate $sinceDate
+
+    [pscustomobject]@{
+        UpdateGroupName = $g
+        Rows            = @($rows)
+        Count           = @($rows).Count
+    }
+}
+
+$totalUpdateCount = ($allGroupResults | Measure-Object -Property Count -Sum).Sum
+
+#########################################################
+# Build HTML report (PSWriteHTML)
 #########################################################
 $reportTitle = "$MailCustomer - Windows Updates $monthname $year"
 
-# NOTE: This is the SAME base64 image string used in Send-CheckDPStatus.ps1.
-# If you want a different logo/image, replace it here.
+# IMPORTANT: Replace this with your FULL base64 string (no [...]).
 $base64Img = @"
 data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfwAAADsCAYAAACR8xQ8AAAAAXNSR0IB2cksfwAAAARnQU1BAACxjwv8YQUAAAAgY0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAAAZiS0dEABQAHgBTiPkECQAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAd0SU1FB+oCGw0oJZhS+AQAACAASURBVHja7Z13nBTl/cffe0dV8FBu6NwcvYOIvYBgZ22xxBo11jg
 qYkv8JWqMMTHFhmU0RmNNYuwaFws2VOyN3uEGaTIWLBEF7ub3xy56HLt3892dvZ3Z/b5fL18Jt8/zzNNmPk/5Pt8n5nmeR9hJxA4DHgNuIu5dgKIoiqIoIsoiIPY7Af2AcqALidhObFh3lTadoiiKovgnFuoZfiLWFViV5pefEffu1+ZTFEVRlGKY4ce9VcBdwJTUX2an/r1Im05RFEVRimWG/+NM/3DgCeBG4t5EbTZFURRFKaYZflLsq4EDU//ankRsZ202RVEURSmmGX
@@ -380,57 +439,56 @@ I8cSW+DO9XzvJqI9+up99x27P6uY8/WV7xZSAjCjjZMq0qrTAVfaX4kH8QhyAz2luSYN+m++JKA60Zk8
 zSji7zpenNgf/tgSGIN1aQfmCXIG5AbhZED5ez8Niphl3rvnzgA0kneSsAlaQNMCcCXzoOva7wIGp/24MwQpDXQGeWyf8pkvzGdQEcTJwZp7qXWmE/wettNO/1iYB3AAAAABJRU5ErkJggg==
 "@
 
-# The base64 string is extremely long; keep it exactly as-is from DPStatus in your repo.
-# If you paste the whole DPStatus img tag line, replace $base64Img with that full string.
-
 $html = New-HTML -TitleText $reportTitle -Online {
     New-HTMLTag -Tag 'style' {
 @"
 body { font-family: Arial, Helvetica, sans-serif; }
-.small { font-size: 11px; color: #333; }
+.small { font-size: 13px; color: #333; }
 .summary { margin: 10px 0 20px 0; }
 .summary div { margin: 2px 0; }
 "@
     }
 
-    # Image (same idea as DPStatus)
     New-HTMLTag -Tag 'img' -Attributes @{
         alt = 'My image'
         src = $base64Img
     }
 
-    # Summary FIRST (same style as DPStatus, but WindowsUpdate values)
     New-HTMLSection -HeaderText "Summary" -HeaderTextSize 20 -HeaderBackGroundColor Darkblue {
         New-HTMLTag -Tag 'div' -Attributes @{ class = 'summary' } {
             New-HTMLTag -Tag 'div' { "Datum: <b>$today</b>" }
             New-HTMLTag -Tag 'div' { "SiteServer: <b>$SiteServer</b>" }
-            New-HTMLTag -Tag 'div' { "UpdateGroupName: <b>$UpdateGroupName</b>" }
-            New-HTMLTag -Tag 'div' { "Antal uppdateringar i rapport: <b>$updateCount</b>" }
-            New-HTMLTag -Tag 'div' { "LimitDays: <b>$LimitDays</b>" }
+            New-HTMLTag -Tag 'div' { "PatchTuesday: <b>$($patchTuesday.ToString('yyyy-MM-dd'))</b>" }
+            New-HTMLTag -Tag 'div' { "RunDate: <b>$($runDate.ToString('yyyy-MM-dd'))</b>" }
             New-HTMLTag -Tag 'div' { "DaysAfterPatchTuesdayToReport: <b>$DaysAfterPatchTuesdayToReport</b>" }
+            New-HTMLTag -Tag 'div' { "LimitDays: <b>$LimitDays</b> (SinceDate: <b>$($sinceDate.ToString('yyyy-MM-dd'))</b>)" }
+            New-HTMLTag -Tag 'div' { "Antal Update Groups: <b>$($UpdateGroupNames.Count)</b>" }
+            New-HTMLTag -Tag 'div' { "Totalt antal uppdateringar i rapport: <b>$totalUpdateCount</b>" }
         }
     }
 
-    # Main section: Updates table
-    New-HTMLSection -HeaderText "Windows Updates ($updateCount)" -HeaderTextSize 20 -HeaderBackGroundColor Darkblue {
-        if ($updateCount -eq 0) {
-            New-HTMLText -Text 'Inga poster.' -Color Gray
-        } else {
-            # Select only columns that exist in your dataset
-            New-HTMLTable -DataTable ($updateRows | Select-Object Title, LocalizedDescription, ArticleID, DatePosted, Deployed, URL, Severity)
+    foreach ($gr in $allGroupResults) {
+        $gName  = $gr.UpdateGroupName
+        $gCount = $gr.Count
+        $gRows  = $gr.Rows
+
+        New-HTMLSection -HeaderText "Software Update Group: $gName ($gCount)" -HeaderTextSize 20 -HeaderBackGroundColor Darkblue {
+            if ($gCount -eq 0) {
+                New-HTMLText -Text 'Inga poster.' -Color Gray
+            } else {
+                New-HTMLTable -DataTable ($gRows | Select-Object Title, LocalizedDescription, ArticleID, DatePosted, URL, Severity)
+            }
         }
     }
 
-    # Footer (same as DPStatus)
     New-HTMLTag -Tag 'p' -Attributes @{ class = 'small' } {
         "Report created $((Get-Date).ToString()) from <b><i>$($Env:Computername)</i></b>"
     }
 }
 
 #########################################################
-# Send email (Send-MailKitMessage) - SAME STYLE AS DPSTATUS
+# Send email (Send-MailKitMessage)
 #########################################################
-# Build recipient list (MimeKit)
 Add-Type -AssemblyName 'System.Runtime' -ErrorAction SilentlyContinue | Out-Null
 
 $RecipientList = [MimeKit.InternetAddressList]::new()
@@ -442,13 +500,13 @@ foreach ($addr in $MailTo) {
 $Subject = [string]"$MailCustomer - Windows Updates $monthname $year - $today"
 
 $Parameters = @{
-    SMTPServer                    = $SMTP
-    Port                          = $MailPortnumber
-    From                          = [MimeKit.MailboxAddress]$MailFrom
-    RecipientList                 = $RecipientList
-    Subject                       = $Subject
-    HTMLBody                      = $html
-    AttachmentList                = [System.Collections.Generic.List[string]]::new()
+    SMTPServer     = $SMTP
+    Port           = $MailPortnumber
+    From           = [MimeKit.MailboxAddress]$MailFrom
+    RecipientList  = $RecipientList
+    Subject        = $Subject
+    HTMLBody       = $html
+    AttachmentList = [System.Collections.Generic.List[string]]::new()
 }
 
 try {
