@@ -185,35 +185,39 @@ The repository includes `Send-WindowsUpdateDeployed.XML` as an example. The scri
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <Configuration>
-  <Logfile>
-    <Path>G:\Scripts\Logfiles\</Path>
-    <Name>WindowsUpdateScript.log</Name>
-    <Logfilethreshold>2000000</Logfilethreshold>
-  </Logfile>
-
-  <HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
-
-  <DisableReportMonth>
-    <DisableReportMonth Number="7" />
-    <DisableReportMonth Number="12" />
-  </DisableReportMonth>
-
-  <Recipients>
-    <Recipients email="admin1@company.com" />
-    <Recipients email="admin2@company.com" />
-  </Recipients>
-
-  <UpdateDeployed>
-    <LimitDays>-25</LimitDays>
+	<Logfile>
+		<Path>G:\Scripts\Logfiles\</Path>
+		<Name>WindowsUpdateScript.log</Name>
+		<Logfilethreshold>2000000</Logfilethreshold>
+	</Logfile>
+	<HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
+	<RunScript>
+		<Job DeploymentID="16777362" Offsetdays="2" Description="Grupp100"/>
+		<Job DeploymentID="16777363" Offsetdays="8" Description="Grupp200"/>
+		<Job DeploymentID="16777364" Offsetdays="15" Description="Grupp300"/>
+	</RunScript>
+	<DisableReportMonth>
+		<DisableReportMonth Number=""/>
+		<DisableReportMonth Number=""/>
+		<DisableReportMonth Number=""/>
+	</DisableReportMonth>
+	<Recipients>
+		<Recipients email="christian.damberg@kriminalvarden.se"/>
+	</Recipients>
+	<UpdateDeployed>
+		<LimitDays>-25</LimitDays>
+		<DaysAfterPatchToRun>9</DaysAfterPatchToRun>
+		  <UpdateGroups>
     <UpdateGroupName>Server Patch Tuesday</UpdateGroupName>
-    <DaysAfterPatchToRun>9</DaysAfterPatchToRun>
-  </UpdateDeployed>
-
-  <SiteServer>Siteserver</SiteServer>
-  <Mailfrom>no-reply@company.com</Mailfrom>
-  <MailSMTP>smtp.company.com</MailSMTP>
-  <MailPort>25</MailPort>
-  <MailCustomer>My company</MailCustomer>
+    <UpdateGroupName>Windows 11 OS Patch</UpdateGroupName>
+	<UpdateGroupName>Windows 11 Office Patch</UpdateGroupName>
+  </UpdateGroups>
+	</UpdateDeployed>
+	<SiteServer>Vntapp0780</SiteServer>
+	<Mailfrom>no-reply@kvv.se</Mailfrom>
+	<MailSMTP>smtp.kvv.se</MailSMTP>
+	<MailPort>25</MailPort>
+	<MailCustomer>Kriminalvarden - IT</MailCustomer>
 </Configuration>
 ```
 
