@@ -21,8 +21,12 @@
 	</Recipients>
 	<UpdateDeployed>
 		<LimitDays>-25</LimitDays>
-		<UpdateGroupName>Server Patch Tuesday</UpdateGroupName>
 		<DaysAfterPatchToRun>9</DaysAfterPatchToRun>
+		  <UpdateGroups>
+    <UpdateGroupName>Server Patch Tuesday</UpdateGroupName>
+    <UpdateGroupName>Windows 11 OS Patch</UpdateGroupName>
+	<UpdateGroupName>Windows 11 Office Patch</UpdateGroupName>
+  </UpdateGroups>
 	</UpdateDeployed>
 	<SiteServer>Vntapp0780</SiteServer>
 	<Mailfrom>no-reply@kvv.se</Mailfrom>
