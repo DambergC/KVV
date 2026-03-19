@@ -336,7 +336,7 @@ if (Get-Command -Name Get-CMModule -ErrorAction SilentlyContinue) {
 # Connect to CM PSDrive + main logic
 #########################################################
 $sitecode = Get-CMSiteCode -ComputerName $SiteServer
-$setSiteCode = "$sitecode`:"
+$setSiteCode = "$sitecode`:";
 Write-Log -LogString "$scriptname - SiteCode resolved: $sitecode"
 
 Push-Location
@@ -381,7 +381,7 @@ try {
     $updates = Get-CMSoftwareUpdate -Fast -UpdateGroupName $UpdateGroupName
 
     foreach ($item in $updates) {
-        $result += New-Object psobject -Property @{
+        $result += New-Object psobject -Property @{ 
             ArticleID            = $item.ArticleID
             Title                = $item.LocalizedDisplayName
             LocalizedDescription = $item.LocalizedDescription
@@ -396,7 +396,7 @@ try {
     $UpdatesFound = $result | Sort-Object DatePosted -Descending | Where-Object { $_.DatePosted -ge $limit }
 
     #########################################################
-    # Build HTML report (PSWriteHTML; replaces ConvertTo-Html)
+    # Build HTML report (PSWriteHTML) - aligned with Send-CheckDPStatus.ps1
     #########################################################
     # Keep the original "pre" and "post" text semantics/wording
     $preText  = "<h1>Windows updates $monthname $year</h1><br><p>The following updates from Microsoft are deployed this month.</p>"
@@ -405,72 +405,48 @@ try {
     # Normalize to array for table rendering
     $UpdatesFound = @($UpdatesFound)
 
-    $UpdatesFoundHtml = New-HTML -Title "Downloaded patches" -Online {
-        # Inline CSS kept close to the previous ConvertTo-Html -Head style
+    $reportTitle = "WindowsUpdate $MailCustomer $monthname $year"
+
+    $html = New-HTML -TitleText $reportTitle -Online {
         New-HTMLTag -Tag 'style' {
 @"
-th {
-    font-family: Arial, Helvetica, sans-serif;
-    color: White;
-    font-size: 12px;
-    border: 1px solid black;
-    padding: 3px;
-    background-color: Black;
-}
-p {
-    font-family: Arial, Helvetica, sans-serif;
-    color: black;
-    font-size: 12px;
-}
-ol {
-    font-family: Arial, Helvetica, sans-serif;
-    list-style-type: square;
-    color: black;
-    font-size: 12px;
-}
-tr {
-    font-family: Arial, Helvetica, sans-serif;
-    color: black;
-    font-size: 11px;
-    vertical-align: text-top;
-}
-body { background-color: lightgray; }
-table {
-    border: 1px solid black;
-    border-collapse: collapse;
-}
-td {
-    border: 1px solid black;
-    padding: 5px;
-    background-color: #E0F3F7;
-}
+body { font-family: Arial, Helvetica, sans-serif; }
+.small { font-size: 11px; color: #333; }
 "@
         }
 
+        # Same embedded image as Send-CheckDPStatus.ps1
+        new-HTMLtag -Tag 'img alt="My image" src="data:image/png;base64,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\n"';
+
         # Pre content
-        New-HTMLSection {
+        New-HTMLSection -HeaderText "Windows updates" -HeaderTextSize 20 -HeaderBackGroundColor Darkblue {
             New-HTMLTag -Tag 'div' {
                 $preText
             }
         }
 
-        # Table content
-        New-HTMLSection -BackgroundColor AirForceBlue {
+        # Updates table
+        New-HTMLSection -HeaderText "Updates ($($UpdatesFound.Count))" -HeaderTextSize 20 -HeaderBackGroundColor Darkblue {
             if ($UpdatesFound.Count -eq 0) {
-                New-HTMLText -Text "No updates found within the configured LimitDays window." -Color Red -FontSize 14
+                New-HTMLText -Text 'No updates found within the configured LimitDays window.' -Color Gray
             }
             else {
-                # Keep same columns / order as the objects we create above
                 $tableData = $UpdatesFound | Select-Object ArticleID, Title, LocalizedDescription, DatePosted, Deployed, URL, Severity
                 New-HTMLTable -DataTable $tableData
             }
         }
 
         # Post content
-        New-HTMLSection {
+        New-HTMLSection -HeaderText "Report info" -HeaderTextSize 20 -HeaderBackGroundColor Darkblue {
             New-HTMLTag -Tag 'div' {
                 $postText
             }
+        }
+
+        New-HTMLTag -Tag 'p' -Attributes @{ class = 'small' } {
+            "Report created $((Get-Date).ToString()) from <b><i>$($Env:Computername)</i></b>"
         }
     }
 
@@ -489,11 +465,11 @@ td {
     }
 
     $Subject  = [string]"WindowsUpdate $MailCustomer $monthname $year"
-    $HTMLBody = [string]$UpdatesFoundHtml
+    $HTMLBody = [string]$html
 
     $AttachmentList = New-Object 'System.Collections.Generic.List[string]'
 
-    $Parameters = @{
+    $Parameters = @{ 
         UseSecureConnectionIfAvailable = $UseSecureConnectionIfAvailable
         SMTPServer                    = $SMTPServer
         Port                          = $Port
@@ -506,7 +482,7 @@ td {
 
     Send-MailKitMessage @Parameters
 
-    Write-Log -LogString ("========================== {0} - Mail on it�s way to {1}" -f $scriptname, ($MailTo -join ', '))
+    Write-Log -LogString ("========================== {0} - Mail on it\n's way to {1}" -f $scriptname, ($MailTo -join ', '))
     Write-Log -LogString "========================== $scriptname - Script exit! =========================="
 }
 finally {
