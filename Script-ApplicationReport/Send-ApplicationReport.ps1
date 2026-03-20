@@ -53,15 +53,46 @@ $HtmlPath       = $xml.Configuration.HTMLfilePath
 # ------------------------------------------------------------------------------------
 # Load required modules
 # ------------------------------------------------------------------------------------
-$requiredModules = @('Send-MailKitMessage', 'PSWriteHTML', 'dbatools')
 
-foreach ($m in $requiredModules) {
-    if (-not (Get-Module -Name $m )) {
-        Write-Host "Required module '$m' is not installed or not available in PSModulePath. Exiting."
-        throw "Missing required module: $m"
+function Import-RequiredModule {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$ModuleName
+    )
+    
+    try {
+        if (-not (Get-Module -Name $ModuleName -ErrorAction SilentlyContinue)) {
+            if (-not (Get-Module -ListAvailable -Name $ModuleName -ErrorAction SilentlyContinue)) {
+                Write-host -LogString "Required module '$ModuleName' not found. Please install it first." -Severity "ERROR"
+                return $false
+            }
+            Write-host -LogString "Importing module '$ModuleName'" -Severity "INFO"
+            Import-Module $ModuleName -ErrorAction Stop
+            Write-host -LogString "Successfully imported module '$ModuleName'" -Severity "INFO"
+        }
+        else {
+            Write-host -LogString "Module '$ModuleName' already loaded" -Severity "INFO"
+        }
+        return $true
     }
+    catch {
+        Write-host -LogString "Failed to import module '$ModuleName'. Error: $_" -Severity "ERROR"
+        return $false
+    }
+}
 
-    Import-Module $m -ErrorAction Stop
+# Required modules
+$requiredModules = @("send-mailkitmessage", "PSWriteHTML", "dbatools")
+$allModulesLoaded = $true
+
+foreach ($module in $requiredModules) {
+    $moduleLoaded = Import-RequiredModule -ModuleName $module
+    $allModulesLoaded = $allModulesLoaded -and $moduleLoaded
+}
+
+if (-not $allModulesLoaded) {
+    Write-Log -LogString "Not all required modules could be loaded. Exiting script." -Severity "ERROR"
+    exit 1
 }
 
 # ------------------------------------------------------------------------------------
