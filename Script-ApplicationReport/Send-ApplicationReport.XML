@@ -3,26 +3,47 @@
   <HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
 
   <!-- Global / default settings -->
-  <SQLServer>ServerName</SQLServer>
-  <Mailfrom>no-reply@shelby.org</Mailfrom>
-  <MailSMTP>smtp.shelby.org</MailSMTP>
+  <SQLServer>vntsql0299.kvv.se</SQLServer>
+  <Mailfrom>no-reply@kvv.se</Mailfrom>
+  <MailSMTP>smtp.kvv.se</MailSMTP>
   <MailPort>25</MailPort>
-  <MailCustomer>Shelby Company Limited</MailCustomer>
+  <MailCustomer>Kriminalvarden - IT</MailCustomer>
 
   <!-- Application-specific configuration -->
   <Applications>
-    <Application Name="Check Point">
+    
+    <Application Name="Check Point" SendDays="Mon,Tue,Wed,Thu,Fri" TargetType="Device">
       <!-- Optional: store the SQL filter or any other identifier -->
-      <ProductFilter>Check Point%</ProductFilter>
+      <ProductFilter>%Check Point VPN%</ProductFilter>
+	    <TargetCollections>
+    <CollectionId>KV10039C</CollectionId>
+    <CollectionId>KV10034F</CollectionId>
+  </TargetCollections>
       <Recipients>
-        <Recipient email="thomas.shelby@shelby.org" attach="true" />
+      <Recipient email="Rikard.Blid1@kriminalvarden.se" attach="false" />
+      <Recipient email="Andreas.Fastland@kriminalvarden.se" attach="false" />
+        <Recipient email="christian.damberg@kriminalvarden.se" attach="false" />
+       </Recipients>
+    </Application>
+
+
+     
+    <Application Name="Google Chrome" SendDays="Fri" TargetType="Device">
+      <ProductFilter>%Google Chrome%</ProductFilter>
+	    <TargetCollections>
+  </TargetCollections>
+      <Recipients>
+        <Recipient email="christian.damberg@kriminalvarden.se" attach="false" />
       </Recipients>
     </Application>
-    <Application Name="Google Chrome">
-      <ProductFilter>Google Chrome%</ProductFilter>
+
+        <!-- 
+
+    <Application Name="Microsoft Office">
+      <ProductFilter>Microsoft Office%</ProductFilter>
       <Recipients>
-        <Recipient email="thomas.shelby@shelby.org" attach="False" />
+        <Recipient email="christian.damberg@kriminalvarden.se" />
       </Recipients>
-    </Application>
+    </Application> -->
   </Applications>
 </Configuration>
