@@ -1,48 +1,48 @@
 # Script-ApplicationReport
 
-This folder contains a PowerShell script and an XML configuration file used to generate **per-application software installation summaries** from **Microsoft SCCM / ConfigMgr** inventory data and distribute them as **HTML email reports**.
+Sends **per-application software installation summaries** from **Microsoft SCCM / ConfigMgr** as HTML reports and emails.
 
-## Files
+This solution is driven by an XML configuration file (`Send-ApplicationReport.xml`) and produces one report per configured application.
 
-- `Send-ApplicationReport.ps1`  
-  Reads configuration from the XML, queries the ConfigMgr database, generates an HTML report, and emails it to recipients.
+## What's new / key features (script v2.6)
 
-- `Send-ApplicationReport.xml`  
-  Configuration file containing SQL connection details, SMTP/mail settings, output path for HTML files, and per-application recipient lists (including per-recipient attachment control).
-
-> Note: Windows is case-insensitive, but the repo currently shows `Send-ApplicationReport.XML`. The script loads `Send-ApplicationReport.xml`. Ensure the filename matches what the script expects, or update the script accordingly.
+- **Per-application scheduling** via `SendDays="Mon,Tue,..."`.
+- **Deployment target reporting** (collection-based) per application:
+  - Supports **multiple target collections** via `<TargetCollections><CollectionId>...</CollectionId></TargetCollections>`.
+  - Supports **Device** and **User** membership via `TargetType="Device|User"`.
+  - **NEW:** Includes **CollectionName** for each configured `CollectionId` (looked up from `v_Collection`).
+- **Per-recipient attachment control** via `attach="true|false"` combined with the `-AttachHTML` switch.
+- **Dry run mode** (`-DryRun`) to preview HTML without sending emails.
+- **Mail-only mode** (`-MailOnly`) to send HTML in the email body without writing files.
 
 ---
 
-## What the script does (high level)
+## Files
 
-For each configured `<Application>` in the XML:
+- `Send-ApplicationReport.ps1`
+  - Reads configuration from the XML
+  - Queries the ConfigMgr database using **dbatools** (`Invoke-DbaQuery`)
+  - Builds HTML using **PSWriteHTML**
+  - Sends email using **Send-MailKitMessage**
 
-1. Builds a SQL query using the `<ProductFilter>` (used in `WHERE ProductName0 LIKE '<ProductFilter>'`).
-2. Runs the query against the ConfigMgr database (`CM_KV1`) using **dbatools** (`Invoke-DbaQuery`).
-3. Builds an HTML report using **PSWriteHTML**:
-   - A header section with generated timestamp, customer name, filter used, and total installation count.
-   - A table of results (Publisher, ProductName, ProductVersion, InstallCount) or a “No matching installations found” message.
-4. Optionally writes the HTML report to disk (unless `-MailOnly` is used).
-5. Sends **one email per recipient** using **Send-MailKitMessage**:
-   - Always includes the HTML report in the email body.
-   - Optionally attaches the generated HTML file depending on:
-     - the global `-AttachHTML` switch, **and**
-     - the recipient’s `attach="true"` attribute in the XML, **and**
-     - a saved HTML file exists.
+- `Send-ApplicationReport.xml` (repo currently shows `Send-ApplicationReport.XML`)
+  - Stores SQL server, SMTP settings, output folder, and per-application configuration
+
+> Note on casing: Windows is case-insensitive, but Git is not. The script loads `Send-ApplicationReport.xml` while the repo currently contains `Send-ApplicationReport.XML`. Rename the file or update the script so the names match.
 
 ---
 
 ## Prerequisites
 
 ### PowerShell modules (required)
-The script checks for these modules and exits if any are missing:
 
-- `dbatools` (used for `Invoke-DbaQuery`)
-- `PSWriteHTML` (used to generate the HTML)
-- `Send-MailKitMessage` (used to send email via SMTP using MailKit/MimeKit types)
+The script expects these modules to be installed:
 
-Install (example, run in an elevated PowerShell session if required by policy):
+- `dbatools` (SQL querying via `Invoke-DbaQuery`)
+- `PSWriteHTML` (HTML generation)
+- `Send-MailKitMessage` (SMTP mail sending using MailKit/MimeKit)
+
+Install (example):
 
 ```powershell
 Install-Module dbatools -Scope CurrentUser
@@ -51,9 +51,10 @@ Install-Module Send-MailKitMessage -Scope CurrentUser
 ```
 
 ### Access required
-- Network access + permissions to query the ConfigMgr SQL database (default DB name in script: `CM_KV1`).
+
+- Permissions to query the ConfigMgr SQL database (script DB name is currently hard-coded as `CM_KV1`).
 - Ability to send mail via the configured SMTP server.
-- Write access to `<HTMLfilePath>` if you want the script to save HTML files.
+- Write access to `<HTMLfilePath>` if you want HTML files saved (not used when running with `-MailOnly`).
 
 ---
 
@@ -64,69 +65,64 @@ Install-Module Send-MailKitMessage -Scope CurrentUser
 ```xml
 <Configuration>
   <HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
-  <SQLServer>ServerName</SQLServer>
-  <Mailfrom>no-reply@shelby.org</Mailfrom>
-  <MailSMTP>smtp.shelby.org</MailSMTP>
+  <SQLServer>vntsql0299.kvv.se</SQLServer>
+  <Mailfrom>no-reply@kvv.se</Mailfrom>
+  <MailSMTP>smtp.kvv.se</MailSMTP>
   <MailPort>25</MailPort>
-  <MailCustomer>Shelby Company Limited</MailCustomer>
+  <MailCustomer>Kriminalvarden - IT</MailCustomer>
   ...
 </Configuration>
 ```
 
 **Fields:**
 
-- `HTMLfilePath`  
-  Folder where HTML report files are saved (only used when **not** running with `-MailOnly`).
-
-- `SQLServer`  
-  SQL Server name / instance hosting the ConfigMgr DB.
-
-- `Mailfrom`  
-  Sender email address.
-
-- `MailSMTP`  
-  SMTP host.
-
-- `MailPort`  
-  SMTP port (cast to integer in script).
-
-- `MailCustomer`  
-  Customer label displayed in the HTML header.
+- `HTMLfilePath` — output folder for saved HTML (only when **not** running `-MailOnly`).
+- `SQLServer` — SQL Server hosting the ConfigMgr database.
+- `Mailfrom` — sender address.
+- `MailSMTP` / `MailPort` — SMTP host and port.
+- `MailCustomer` — customer label shown in the HTML header.
 
 ### Per-application settings
 
-Applications are defined under:
+Each application is defined under `<Applications>`:
 
 ```xml
-<Applications>
-  <Application Name="Google Chrome">
-    <ProductFilter>Google Chrome%</ProductFilter>
-    <Recipients>
-      <Recipient email="thomas.shelby@shelby.org" attach="False" />
-    </Recipients>
-  </Application>
-</Applications>
+<Application Name="Google Chrome" SendDays="Fri" TargetType="Device">
+  <ProductFilter>%Google Chrome%</ProductFilter>
+  <TargetCollections>
+    <CollectionId>KV10039C</CollectionId>
+    <CollectionId>KV10034F</CollectionId>
+  </TargetCollections>
+  <Recipients>
+    <Recipient email="user@domain" attach="false" />
+  </Recipients>
+</Application>
 ```
 
-**Fields / attributes:**
+**Attributes / elements:**
 
-- `<Application Name="...">` (required)  
-  Human-friendly application name used in:
-  - the HTML title
-  - the email subject
-  - the output file name (sanitized)
+- `Name` (required) — used in:
+  - report title
+  - email subject
+  - output file name (sanitized)
 
-- `<ProductFilter>...</ProductFilter>` (required)  
-  Used in SQL as: `ProductName0 LIKE '<ProductFilter>'`  
-  Example: `Google Chrome%`
+- `SendDays` (optional) — comma-separated list of allowed send days.
+  - Supported: `Mon,Tue,Wed,Thu,Fri,Sat,Sun`
+  - If set and **today is not included**, the application is skipped.
 
-- `<Recipients>` / `<Recipient ... />` (required for sending email)
-  - `email="user@domain"` (required)
-  - `attach="true|false"` (optional, evaluated case-insensitively by converting to lowercase and comparing to `true`)
+- `TargetType` (optional; default `Device`) — determines which membership view is used:
+  - `Device` → `v_FullCollectionMembership`
+  - `User` → `v_FullCollectionMembership_User`
 
-**Attachment behavior:**
-- If you do **not** run the script with `-AttachHTML`, **no one** gets attachments.
-- If you run with `-AttachHTML`, only recipients with `attach="true"` get the HTML file attached (and only if the HTML file was written to disk).
+- `ProductFilter` (required) — used in SQL as:
+  - `s.ProductName0 LIKE '<ProductFilter>'`
+
+- `TargetCollections` (optional) — one or more collection IDs to report deployment targets.
+  - Output includes `CollectionId`, `CollectionName`, and `TargetCount`, plus a **UniqueTargets** number across the listed collections.
+
+- `Recipients` (required for sending mail)
+  - `email` (required)
+  - `attach` (optional) — `true|false` (case-insensitive)
 
 ---
 
@@ -138,99 +134,79 @@ Run from the folder containing both files:
 .\Send-ApplicationReport.ps1
 ```
 
-### Switches
+### Parameters / switches
 
-- `-DryRun`  
-  Does not send any email. Generates HTML and opens it in the default browser.
-  - If HTML files are written, it opens the saved file.
-  - If `-MailOnly` is also used, it creates a temporary HTML file and opens that.
+- `-DryRun`
+  - Generates HTML and opens it in the default browser.
+  - **Does not send emails.**
 
-- `-MailOnly`  
-  Sends the HTML in the email body only and **does not write** HTML files to disk.
+- `-MailOnly`
+  - Sends HTML in the email body only.
+  - **Does not write** HTML files to disk.
 
-- `-AttachHTML`  
-  Enables attachment support. Attachments are still controlled per-recipient via `attach="true"` in the XML.
+- `-AttachHTML`
+  - Enables attachment support.
+  - A recipient only gets an attachment when:
+    - `-AttachHTML` is provided, **and**
+    - the recipient has `attach="true"` in XML, **and**
+    - an HTML file was actually written (i.e., not `-MailOnly`).
 
 ### Examples
 
-**Generate + send emails (default behavior):**
 ```powershell
+# Default: generate reports, save HTML, send emails
 .\Send-ApplicationReport.ps1
-```
 
-**Test the generated HTML without sending emails:**
-```powershell
+# Preview HTML only (no emails)
 .\Send-ApplicationReport.ps1 -DryRun
-```
 
-**Send emails but don’t save HTML files:**
-```powershell
+# Send emails but don't save HTML files
 .\Send-ApplicationReport.ps1 -MailOnly
-```
 
-**Allow attachments (only to recipients with attach="true"):**
-```powershell
+# Allow attachments (still controlled by per-recipient attach flag)
 .\Send-ApplicationReport.ps1 -AttachHTML
 ```
-
----
-
-## What data is queried (SQL overview)
-
-The script queries ConfigMgr inventory view `v_GS_INSTALLED_SOFTWARE` joined to `System_DATA`, grouped by:
-
-- Publisher
-- ProductName
-- ProductVersion
-
-And returns an `InstallCount` per group for rows where:
-
-- `ProductName0 LIKE '<ProductFilter from XML>'`
 
 ---
 
 ## Output
 
 ### HTML report
-The report includes:
-- Report title: `"<ApplicationName> Software Installation Summary"`
+
+For each application, the HTML includes:
+
 - Generated timestamp
-- Customer name from XML
+- Customer name
 - Filter used
 - Total installations (sum of `InstallCount`)
-- A table with:
-  - Publisher
-  - ProductName
-  - ProductVersion
-  - InstallCount
+- A results table (Publisher, ProductName, ProductVersion, InstallCount) or a "No matching installations" message
+- **Deployment targets per collection** table (under the software table), including **CollectionName**
 
 ### Email
-- **Subject:** `"<ApplicationName> Software Installation Summary - <yyyy-MM-dd HH:mm>"`
-- **Body:** HTML report content
-- **Attachment (optional):** the saved HTML file (per rules above)
+
+- **Subject:** `"<AppName> Software Installation Summary - <yyyy-MM-dd HH:mm>"`
+  - When targets are configured and successfully queried, it also includes: `(Targets: <UniqueTargets> Devices|Users)`
+- **Body:** HTML report
+- **Attachment (optional):** saved HTML file (controlled by `-AttachHTML` + per-recipient `attach="true"`)
 
 ---
 
 ## Troubleshooting
 
-- **Missing module error**
-  - Install the missing module(s): `dbatools`, `PSWriteHTML`, `Send-MailKitMessage`.
+- **Required module missing**
+  - Install: `dbatools`, `PSWriteHTML`, `Send-MailKitMessage`
 
-- **No emails sent for an application**
-  - Ensure `<Recipients><Recipient ... /></Recipients>` exists and each recipient has an `email="..."`.
+- **Application is skipped unexpectedly**
+  - Check `SendDays` values are valid and include today's day (Mon..Sun).
 
-- **No data in the report**
-  - Verify `<ProductFilter>` matches the values in `v_GS_INSTALLED_SOFTWARE.ProductName0`.
-  - Test the generated SQL filter in SQL Server Management Studio.
+- **No data in report**
+  - Verify `ProductFilter` matches `v_GS_INSTALLED_SOFTWARE.ProductName0` values.
+
+- **Deployment target counts missing**
+  - Verify `TargetType` and `CollectionId` values.
+  - Ensure the ConfigMgr views exist and permissions allow reading them.
 
 - **Attachments not included**
-  - Ensure you ran with `-AttachHTML`.
+  - Ensure `-AttachHTML` is used.
   - Ensure recipient has `attach="true"`.
-  - Ensure HTML files are being written (i.e., you did **not** use `-MailOnly`, and `HTMLfilePath` is set and writable).
-
----
-
-## Notes / customization points
-
-- The ConfigMgr database name is currently hard-coded in the script as `CM_KV1`. If your site DB name differs, update the script or make it configurable via XML.
-- `HTMLfilePath` is only used when saving reports; email body is always sent as HTML unless using `-DryRun`.
+  - Ensure HTML files are being written (not `-MailOnly`, and `HTMLfilePath` is valid and writable).
