@@ -9,18 +9,20 @@
   - Sends HTML body via Send-MailKitMessage (Send-MailKitMessage module)
   - Sends one email per recipient
 
-.SWITCHES
-  -DryRun
-      Test mode. No emails sent.
-      HTML is generated and opened in the default browser.
+  Per-application schedule:
+    <Application Name="Google Chrome" SendDays="Fri"> ... </Application>
+    Supported days: Mon,Tue,Wed,Thu,Fri,Sat,Sun
 
-  -MailOnly
-      Only send HTML in email body.
-      Do not write HTML files to disk.
+  Deployment target reporting (collection-based, supports multiple collections):
+    <Application ... TargetType="Device|User">
+      <TargetCollections>
+        <CollectionId>KV10039C</CollectionId>
+        ...
+      </TargetCollections>
+    </Application>
 
-  -AttachHTML
-      Enable sending HTML files as attachments.
-      Then, per-recipient, XML decides if they get the attachment (attach="true").
+  NEW (collection names):
+  - The targets table will include CollectionName for each CollectionId (from v_Collection).
 #>
 
 [CmdletBinding()]
@@ -30,13 +32,21 @@ param(
     [switch]$AttachHTML
 )
 
-$scriptversion = '2.2'
+$scriptversion = '2.6'
 $scriptname    = $MyInvocation.MyCommand.Name
 
 Write-Host "Script: $scriptname  Version: $scriptversion"
 if ($DryRun)     { Write-Host "Mode: DRY RUN (no emails will be sent, HTML will be opened)" }
 if ($MailOnly)   { Write-Host "Mode: MAIL ONLY (no HTML files will be written)" }
 if ($AttachHTML) { Write-Host "Mode: ATTACH HTML ENABLED (per-recipient attach flag from XML will be honored)" }
+
+function Write-Log {
+    param(
+        [Parameter(Mandatory)][string]$LogString,
+        [Parameter()][ValidateSet('INFO','WARNING','ERROR','SUCCESS')][string]$Severity = 'INFO'
+    )
+    Write-Host "[$Severity] $LogString"
+}
 
 # ------------------------------------------------------------------------------------
 # Load configuration XML
@@ -53,40 +63,38 @@ $HtmlPath       = $xml.Configuration.HTMLfilePath
 # ------------------------------------------------------------------------------------
 # Load required modules
 # ------------------------------------------------------------------------------------
-
 function Import-RequiredModule {
     param (
         [Parameter(Mandatory = $true)]
         [string]$ModuleName
     )
-    
+
     try {
         if (-not (Get-Module -Name $ModuleName -ErrorAction SilentlyContinue)) {
             if (-not (Get-Module -ListAvailable -Name $ModuleName -ErrorAction SilentlyContinue)) {
-                Write-host -LogString "Required module '$ModuleName' not found. Please install it first." -Severity "ERROR"
+                Write-Log -LogString "Required module '$ModuleName' not found. Please install it first." -Severity "ERROR"
                 return $false
             }
-            Write-host -LogString "Importing module '$ModuleName'" -Severity "INFO"
+            Write-Log -LogString "Importing module '$ModuleName'" -Severity "INFO"
             Import-Module $ModuleName -ErrorAction Stop
-            Write-host -LogString "Successfully imported module '$ModuleName'" -Severity "INFO"
+            Write-Log -LogString "Successfully imported module '$ModuleName'" -Severity "INFO"
         }
         else {
-            Write-host -LogString "Module '$ModuleName' already loaded" -Severity "INFO"
+            Write-Log -LogString "Module '$ModuleName' already loaded" -Severity "INFO"
         }
         return $true
     }
     catch {
-        Write-host -LogString "Failed to import module '$ModuleName'. Error: $_" -Severity "ERROR"
+        Write-Log -LogString "Failed to import module '$ModuleName'. Error: $_" -Severity "ERROR"
         return $false
     }
 }
 
-# Required modules
-$requiredModules = @("send-mailkitmessage", "PSWriteHTML", "dbatools")
+$requiredModules  = @("send-mailkitmessage", "PSWriteHTML", "dbatools")
 $allModulesLoaded = $true
 
 foreach ($module in $requiredModules) {
-    $moduleLoaded = Import-RequiredModule -ModuleName $module
+    $moduleLoaded     = Import-RequiredModule -ModuleName $module
     $allModulesLoaded = $allModulesLoaded -and $moduleLoaded
 }
 
@@ -113,7 +121,7 @@ FROM
     INNER JOIN System_DATA AS sys
         ON s.ResourceID = sys.MachineID
 WHERE
-   s.ProductName0 LIKE '[PRODUCT_FILTER]'
+    s.ProductName0 LIKE '[PRODUCT_FILTER]'
 GROUP BY
     s.Publisher0,
     s.ProductName0,
@@ -127,7 +135,6 @@ ORDER BY
 $querySummary = @"
 SELECT
     CASE
-        -- Laptop / notebook patterns
         WHEN CS.Model0 LIKE '%Laptop%'         THEN 'Laptop'
         WHEN CS.Model0 LIKE '%Notebook%'       THEN 'Laptop'
         WHEN CS.Model0 LIKE '%Book%'           THEN 'Laptop'
@@ -137,8 +144,6 @@ SELECT
         WHEN CS.Model0 LIKE '%Latitude%'       THEN 'Laptop'
         WHEN CS.Model0 LIKE '%XPS 13%' OR CS.Model0 LIKE '%XPS 15%' OR CS.Model0 LIKE '%XPS 17%' THEN 'Laptop'
         WHEN CS.Model0 LIKE '%Surface Laptop%' THEN 'Laptop'
-
-        -- Desktop patterns (incl workstation => desktop)
         WHEN CS.Model0 LIKE '%Workstation%'    THEN 'Desktop'
         WHEN CS.Model0 LIKE '%Desktop%'        THEN 'Desktop'
         WHEN CS.Model0 LIKE '%OptiPlex%'       THEN 'Desktop'
@@ -146,7 +151,6 @@ SELECT
         WHEN CS.Model0 LIKE '%EliteDesk%'      THEN 'Desktop'
         WHEN CS.Model0 LIKE '%ThinkCentre%'    THEN 'Desktop'
         WHEN CS.Model0 LIKE '%Surface Studio%' THEN 'Desktop'
-
         ELSE 'Unknown'
     END AS [FormFactor],
     COUNT(DISTINCT SYS.ResourceID) AS [Device_Count]
@@ -155,12 +159,8 @@ FROM
     JOIN v_GS_COMPUTER_SYSTEM AS CS ON SYS.ResourceID = CS.ResourceID
     JOIN v_GS_OPERATING_SYSTEM AS OS ON SYS.ResourceID = OS.ResourceID
 WHERE
-    -- SCCM client installed
     SYS.Client0 = 1
-    -- Windows 11 only
     AND OS.Caption0 LIKE '%Windows 11%'
-
-    -- exclude virtual machines
     AND CS.Manufacturer0 NOT LIKE '%VMware%'
     AND CS.Manufacturer0 NOT LIKE '%VirtualBox%'
     AND NOT (CS.Manufacturer0 LIKE '%Microsoft%' AND CS.Model0 LIKE '%Virtual%')
@@ -186,8 +186,66 @@ GROUP BY
     END
 ORDER BY
     [FormFactor];
-
 "@
+
+# ------------------------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------------------------
+function Get-NormalizedSendDays {
+    param([Parameter(Mandatory)][string]$SendDays)
+
+    $valid = @('Mon','Tue','Wed','Thu','Fri','Sat','Sun')
+
+    $days = $SendDays.Split(',') |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -ne '' } |
+        ForEach-Object {
+            $d = $_
+            if ($d.Length -ge 3) { ($d.Substring(0,1).ToUpper() + $d.Substring(1,2).ToLower()) } else { $d }
+        }
+
+    $invalid = $days | Where-Object { $valid -notcontains $_ }
+
+    [pscustomobject]@{
+        ValidDays   = $valid
+        AllowedDays = @($days)
+        InvalidDays = @($invalid)
+    }
+}
+
+# Robust XML parsing using XPath (less fragile than $node.TargetCollections.CollectionId)
+function Get-XmlCollectionIds {
+    param([Parameter(Mandatory)][System.Xml.XmlElement]$AppNode)
+
+    $ids = @()
+
+    # Preferred: <TargetCollections><CollectionId>...</CollectionId></TargetCollections>
+    $nodes = $AppNode.SelectNodes('./TargetCollections/CollectionId')
+    foreach ($n in @($nodes)) {
+        $id = $n.InnerText
+        if ($id) {
+            $id = $id.Trim()
+            if (-not [string]::IsNullOrWhiteSpace($id)) { $ids += $id }
+        }
+    }
+
+    # Optional back-compat: <TargetCollectionId>KV123</TargetCollectionId>
+    $single = $AppNode.SelectSingleNode('./TargetCollectionId')
+    if ($single -and $single.InnerText) {
+        $id = $single.InnerText.Trim()
+        if (-not [string]::IsNullOrWhiteSpace($id)) { $ids += $id }
+    }
+
+    @($ids | Select-Object -Unique)
+}
+
+function ConvertTo-SqlInList {
+    param([Parameter(Mandatory)][string[]]$Values)
+
+    $quoted = $Values | ForEach-Object { "'" + ($_.Replace("'", "''")) + "'" }
+    ($quoted -join ',')
+}
+
 # ------------------------------------------------------------------------------------
 # Process each <Application> from XML
 # ------------------------------------------------------------------------------------
@@ -198,6 +256,7 @@ if (-not $applications) {
 }
 
 foreach ($app in $applications) {
+
     $appName       = $app.Name
     $productFilter = $app.ProductFilter
 
@@ -211,16 +270,96 @@ foreach ($app in $applications) {
         continue
     }
 
+    # -------------------------------------------------------------------------
+    # Per-application schedule gate (SendDays="Mon,Tue,Fri")
+    # -------------------------------------------------------------------------
+    $today = (Get-Date).ToString('ddd', [System.Globalization.CultureInfo]::InvariantCulture) # Mon/Tue/...
+
+    $sendDaysAttr = $app.SendDays
+    if (-not [string]::IsNullOrWhiteSpace($sendDaysAttr)) {
+        $sched = Get-NormalizedSendDays -SendDays $sendDaysAttr
+
+        if ($sched.InvalidDays.Count -gt 0) {
+            Write-Warning "Application '$appName' has invalid SendDays value(s): $($sched.InvalidDays -join ', '). Valid: $($sched.ValidDays -join ', ')"
+            continue
+        }
+
+        if ($sched.AllowedDays.Count -gt 0 -and ($sched.AllowedDays -notcontains $today)) {
+            Write-Host "Skipping '$appName' today ($today). Allowed days: $($sched.AllowedDays -join ', ')"
+            continue
+        }
+    }
+
     Write-Host "=== Processing application '$appName' (filter: $productFilter) ==="
 
-    # Build query for this application
+    # -------------------------------------------------------------------------
+    # Deployment targets (unique) from one or more collections (Device/User)
+    # + include collection name in the output table
+    # -------------------------------------------------------------------------
+    $targetType = 'Device'
+    if ($app.TargetType -and -not [string]::IsNullOrWhiteSpace($app.TargetType.ToString())) {
+        $targetType = $app.TargetType.ToString().Trim()
+    }
+
+    $collectionIds = Get-XmlCollectionIds -AppNode $app
+
+    $targetsByCollection = @()
+    $uniqueTargets = $null
+
+    if ($collectionIds.Count -gt 0) {
+        $isUser = $false
+        if ($targetType.ToLower() -eq 'user') { $isUser = $true }
+
+        $membershipView = if ($isUser) { 'v_FullCollectionMembership_User' } else { 'v_FullCollectionMembership' }
+        $inList = ConvertTo-SqlInList -Values $collectionIds
+
+        # Join against v_Collection to get the collection name
+        $qByCollection = @"
+SELECT
+    m.CollectionID AS CollectionId,
+    c.Name         AS CollectionName,
+    COUNT(1)       AS TargetCount
+FROM $membershipView AS m
+LEFT JOIN v_Collection AS c
+    ON c.CollectionID = m.CollectionID
+WHERE
+    m.CollectionID IN ($inList)
+GROUP BY
+    m.CollectionID,
+    c.Name
+ORDER BY
+    m.CollectionID;
+"@
+
+        $qUnique = @"
+SELECT
+    COUNT(DISTINCT m.ResourceID) AS UniqueTargets
+FROM $membershipView AS m
+WHERE
+    m.CollectionID IN ($inList);
+"@
+
+        try {
+            $targetsByCollection = @(Invoke-DbaQuery -SqlInstance $SqlServer -Database $Database -Query $qByCollection -ErrorAction Stop |
+                Select-Object CollectionId, CollectionName, TargetCount)
+
+            $u = Invoke-DbaQuery -SqlInstance $SqlServer -Database $Database -Query $qUnique -ErrorAction Stop
+            $uniqueTargets = [int]$u.UniqueTargets
+        }
+        catch {
+            Write-Warning "Failed to query deployment targets for '$appName' ($targetType). Collections: $($collectionIds -join ', '). Error: $($_.Exception.Message)"
+            $targetsByCollection = @()
+            $uniqueTargets = $null
+        }
+    }
+
+    # -------------------------------------------------------------------------
+    # App inventory query
+    # -------------------------------------------------------------------------
     $query = $queryTemplate.Replace('[PRODUCT_FILTER]', $productFilter)
 
-    # --------------------------------------------------------------------------------
-    # Run query via dbatools
-    # --------------------------------------------------------------------------------
     try {
-        $dt = Invoke-DbaQuery -SqlInstance $SqlServer -Database $Database -Query $query -ErrorAction Stop
+        $dt      = Invoke-DbaQuery -SqlInstance $SqlServer -Database $Database -Query $query -ErrorAction Stop
         $summary = Invoke-DbaQuery -SqlInstance $SqlServer -Database $Database -Query $querySummary -ErrorAction Stop
     }
     catch {
@@ -228,27 +367,23 @@ foreach ($app in $applications) {
         continue
     }
 
-    # Ensure $dt is an array (0,1, or many rows)
     $dt = @($dt)
 
-    # Remove DataRow internal properties; keep only columns we actually use
     if ($dt.Count -gt 0) {
-        $dt = $dt | Select-Object Publisher, ProductName, ProductVersion, InstallCount
+        $dt      = $dt | Select-Object Publisher, ProductName, ProductVersion, InstallCount
         $summary = $summary | Select-Object FormFactor, Device_count
     }
 
-   
-
-    # --------------------------------------------------------------------------------
-    # Build HTML with PSWriteHTML (returned as a string)
-    # --------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Build HTML
+    # -------------------------------------------------------------------------
     $reportTitle = "$appName Software Installation Summary"
     $now         = Get-Date -Format "yyyy-MM-dd HH:mm"
 
     $html = New-HTML -TitleText $reportTitle -Online {
-        # CSS
+
         New-HTMLTag -Tag 'style' {
-            @"
+@"
 table {
     border-collapse: collapse;
 }
@@ -262,7 +397,7 @@ th, td {
 .header-block {
     margin: 10px auto;
     font-size: 12px;
-    max-width: 600px;
+    max-width: 900px;
 }
 .header-block div {
     margin: 2px 0;
@@ -272,9 +407,8 @@ th, td {
     text-align: center;
 }
 "@
-        }
 
-        new-HTMLtag -Tag 'img alt="My image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfwAAADsCAYAAACR8xQ8AAAAAXNSR0IB2cksfwAAAARnQU1BAACxjwv8YQUAAAAgY0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAAAZiS0dEABQAHgBTiPkECQAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAd0SU1FB+oCGw0oJZhS+AQAACAASURBVHja7Z13nBTl/cffe0dV8FBu6NwcvYOIvYBgZ22xxBo11jg
+new-HTMLtag -Tag 'img alt="My image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfwAAADsCAYAAACR8xQ8AAAAAXNSR0IB2cksfwAAAARnQU1BAACxjwv8YQUAAAAgY0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAAAZiS0dEABQAHgBTiPkECQAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAd0SU1FB+oCGw0oJZhS+AQAACAASURBVHja7Z13nBTl/cffe0dV8FBu6NwcvYOIvYBgZ22xxBo11jg
 qYkv8JWqMMTHFhmU0RmNNYuwaFws2VOyN3uEGaTIWLBEF7ub3xy56HLt3892dvZ3Z/b5fL18Jt8/zzNNmPk/5Pt8n5nmeR9hJxA4DHgNuIu5dgKIoiqIoIsoiIPY7Af2AcqALidhObFh3lTadoiiKovgnFuoZfiLWFViV5pefEffu1+ZTFEVRlGKY4ce9VcBdwJTUX2an/r1Im05RFEVRimWG/+NM/3DgCeBG4t5EbTZFURRFKaYZflLsq4EDU//ankRsZ202RVEURSmmGX
 4i9gfgV0CLBr88Sdw7TJtPURRFUaIu+InY1cBljYR4kbi3jzahoiiKokRV8BMxE1icZmbfkJ8S9x7SZlQURVGUxgnrHv5hPsQe4ChtQkVRFEWJruD38RmulzahoiiKokRX8Ff5DLdam1BRFEVRoiv4zwQcTlEURVFKmjBb6T8AnNhIiHnEvYHahIqiKIoS3Rk+xL0Tgacy/DoHOEibT1EURVGiPsP/caYfB44EBgHLgeeIe3dq0ymKoihKMQh+IjYMaAW0A7bix9WIdcDXw
 Eb2//YntGx7hTajoiiKooRZ8JN33Y8EhgH9AZPkkbyWglTqgI8BB5gHzAU+JO69os2rKIqiKIUQ/ERsP2AsMAbYWSjs2TATeBV4ifF11xGLVWuTK4qiKCr4+RH544Cjgf1JLs8XilpgKvAk8DBxb6U2v6IoiqKCn5vI7wOcBhxOcv89HYuB1kCPNL99Q/LinNOBoRniHwP8heQ2QEO+ApYCw4FYmt/rgBeBu4l7/9JuoCiKohQ7wR7LS8TOIxFbkBLT4xuIvQe8ApwPjAMW
@@ -356,54 +490,82 @@ IMb4atcV3Hvt8wrRWAxK1pvo33Xs9w5HFBHp/5NTA+ZdvQrFQNvDAosfdcxw7rBVLPCgS/s2FaO7iO/Q
 I8cSW+DO9XzvJqI9+up99x27P6uY8/WV7xZSAjCjjZMq0qrTAVfaX4kH8QhyAz2luSYN+m++JKA60Zk8d9vxKVhFZcbgVpB+K07VZ8TVR/ztcBVrmOPiY8fPV9f72ZDcjyvHBinVaaCrzQ/kn38IcisbOfkmDfpXnLQs1KpYIR1WX8p8KgwWhSX9WcAu7mOfYW+1s3exyYjs3m5RGtNBV9pfiQ+9VsBXZpR8EW30LmOPSPgulkoDF8d4na+Vhi+W8p9bRT4FJjgOvZw17Hf
 0Ve6YLwinDwoKvhKM5NPF6O5LnFLlvSX5SH/y/KY3+aegb0DvCGMFvZb9NYAl7qOXek69k36KhecKVoFKvhKiHEdezoowyV6AAAA2UlEQVRQl6fkc51xF1TwXcdeKKybQSFvbuksfwfDtMaGrAweMBU4yXXsTq5j/0nf4tDwtFaBCr4SfvLhkMRzHfvDbCOnrj4tdBlAto/fK8yN7Dr2Y8iPLl4Qgqx/S9K5y0SgynXsMa5j36evbej613zys9Km+EA97SmSmXjQBmcLcky
 zSji7zpenNgf/tgSGIN1aQfmCXIG5AbhZED5ez8Niphl3rvnzgA0kneSsAlaQNMCcCXzoOva7wIGp/24MwQpDXQGeWyf8pkvzGdQEcTJwZp7qXWmE/wettNO/1iYB3AAAAABJRU5ErkJggg=="'
+        }
 
-        # Section 1: centered header + summary info
+        # Optional: re-add your base64 logo line here if you want it embedded
+        # new-HTMLtag -Tag 'img alt="My image" src="data:image/png;base64,...."'
+
+        $targetLabel = if ($targetType.ToLower() -eq 'user') { 'Users' } else { 'Devices' }
+
+        # Header section
         New-HTMLSection -HeaderTextAlignment center -HeaderTextSize 20 -HeaderBackGroundColor Darkblue -HeaderText $reportTitle {
 
             New-HTMLTag -Tag 'div' -Attributes @{ class = 'header-block' } {
-                New-HTMLTag -Tag 'div' {
-                    "<span class='header-label'>Report generated:</span> $($now)"
-                }
-                New-HTMLTag -Tag 'div' {
-                    "<span class='header-label'>Customer:</span> $MailCustomer"
-                }
-                New-HTMLTag -Tag 'div' {
-                    "<span class='header-label'>Filter:</span> ProductName LIKE '$productFilter'"
-                }
+
+                New-HTMLTag -Tag 'div' { "<span class='header-label'>Report generated:</span> $($now)" }
+                New-HTMLTag -Tag 'div' { "<span class='header-label'>Customer:</span> $MailCustomer" }
+                New-HTMLTag -Tag 'div' { "<span class='header-label'>Filter:</span> ProductName LIKE '$productFilter'" }
 
                 if ($dt.Count -gt 0) {
                     $totalInstalls = ($dt | Measure-Object -Property InstallCount -Sum).Sum
-                    $totaldevices = ($summary | Measure-Object -Property device_count -sum).sum
-         
+                    $totaldevices  = ($summary | Measure-Object -Property device_count -Sum).Sum
                     New-HTMLTag -Tag 'div' {
                         "<span class='header-label'>Total installations (sum of InstallCount):</span> <b>$totalInstalls</b> of total <b>$totaldevices</b> Devices"
                     }
                 }
                 else {
+                    New-HTMLTag -Tag 'div' { "<span class='header-label'>Total installations (sum of InstallCount):</span> 0" }
+                }
+
+                # Deployment target summary (UniqueTargets across collections)
+                if ($collectionIds.Count -gt 0) {
+                    if ($null -ne $uniqueTargets) {
+                        New-HTMLTag -Tag 'div' {
+                            "<span class='header-label'>Deployment unique targets ($targetLabel):</span> <b>$uniqueTargets</b>"
+                        }
+                    }
                     New-HTMLTag -Tag 'div' {
-                        "<span class='header-label'>Total installations (sum of InstallCount):</span> 0"
+                        "<span class='header-label'>Target collections ($targetType):</span> $($collectionIds -join ', ')"
+                    }
+                }
+                else {
+                    New-HTMLTag -Tag 'div' {
+                        "<span class='header-label'>Deployment targets:</span> No TargetCollections configured"
                     }
                 }
             }
         }
 
-        # Section 2: table only (or "no data" message)
+        # Data section: software table + (ALWAYS UNDER) deployment targets table
         New-HTMLSection -HeaderBackGroundColor darkblue {
+
             if ($dt.Count -eq 0) {
                 New-HTMLText -Text "No matching installations found." -Color Red -FontSize 14
             }
             else {
                 New-HTMLTable -DataTable $dt
-                #New-HTMLTable -DataTable $summary    
             }
 
-            
+            # Always under software table
+            New-HTMLText -Text "Deployment targets per collection ($targetLabel)" -Color White -FontSize 14
+
+            if ($collectionIds.Count -gt 0) {
+                if ($targetsByCollection.Count -gt 0) {
+                    New-HTMLTable -DataTable $targetsByCollection
+                }
+                else {
+                    New-HTMLText -Text "No collection membership rows returned (check CollectionId / TargetType)." -Color Yellow -FontSize 12
+                }
+            }
+            else {
+                New-HTMLText -Text "Not configured for this application." -Color Yellow -FontSize 12
+            }
         }
     }
 
-    # --------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Handle HTML file output (skipped when -MailOnly is used)
-    # --------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     $htmlFile = $null
     if (-not $MailOnly -and -not [string]::IsNullOrWhiteSpace($HtmlPath)) {
         if (-not (Test-Path -LiteralPath $HtmlPath)) {
@@ -422,24 +584,22 @@ zSji7zpenNgf/tgSGIN1aQfmCXIG5AbhZED5ez8Niphl3rvnzgA0kneSsAlaQNMCcCXzoOva7wIGp/24
             Start-Process $htmlFile
         }
         else {
-            # If MailOnly + DryRun (no file) – create temp file to view
-            $tempFile = [System.IO.Path]::GetTempFileName().Replace('.tmp','.html')
+            $tempFile = [System.IO.Path]::GetTempFileName().Replace('.tmp', '.html')
             $html | Out-File -FilePath $tempFile -Encoding UTF8
             Start-Process $tempFile
         }
         continue
     }
 
-    # --------------------------------------------------------------------------------
-    # Build recipient list from XML (with per-recipient attach flag)
-    # --------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Recipients
+    # -------------------------------------------------------------------------
     $recipientNodes = $app.Recipients.Recipient
     if (-not $recipientNodes) {
         Write-Warning "Application '$appName' has no <Recipients><Recipient> entries. Skipping email."
         continue
     }
 
-    # Build an object per recipient: Email + AttachHtmlFromXml (bool)
     $recipients = @()
     foreach ($r in $recipientNodes) {
         if (-not $r.email) { continue }
@@ -451,7 +611,7 @@ zSji7zpenNgf/tgSGIN1aQfmCXIG5AbhZED5ez8Niphl3rvnzgA0kneSsAlaQNMCcCXzoOva7wIGp/24
         }
 
         $recipients += [pscustomobject]@{
-            Email        = $r.email
+            Email         = $r.email
             AttachFromXml = $attachFlag
         }
     }
@@ -463,21 +623,26 @@ zSji7zpenNgf/tgSGIN1aQfmCXIG5AbhZED5ez8Niphl3rvnzgA0kneSsAlaQNMCcCXzoOva7wIGp/24
 
     Write-Host "Recipients for '$appName': $($recipients.Email -join ', ')"
 
-    # --------------------------------------------------------------------------------
-    # Prepare From address (MailboxAddress reused for all recipients)
-    # --------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Mail prepare (include UniqueTargets in subject when available)
+    # -------------------------------------------------------------------------
     $fromAddress = New-Object MimeKit.MailboxAddress ('', $MailFrom)
-    $Subject     = "$appName Software Installation Summary - $now"
 
-    # Base attachment path (if file exists)
+    $targetLabelShort = if ($targetType.ToLower() -eq 'user') { 'Users' } else { 'Devices' }
+    if ($null -ne $uniqueTargets) {
+        $Subject = "$appName Software Installation Summary - $now (Targets: $uniqueTargets $targetLabelShort)"
+    } else {
+        $Subject = "$appName Software Installation Summary - $now"
+    }
+
     $baseAttachment = $null
     if ($htmlFile -and (Test-Path -LiteralPath $htmlFile)) {
         $baseAttachment = $htmlFile
     }
 
-    # --------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Send one email per recipient
-    # --------------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     foreach ($rec in $recipients) {
         $addr          = $rec.Email
         $attachFromXml = $rec.AttachFromXml
@@ -486,7 +651,6 @@ zSji7zpenNgf/tgSGIN1aQfmCXIG5AbhZED5ez8Niphl3rvnzgA0kneSsAlaQNMCcCXzoOva7wIGp/24
 
         Write-Host "Sending mail for '$appName' to $addr (attach from XML: $attachFromXml) ..."
 
-        # RecipientList expects a MimeKit.InternetAddress (MailboxAddress derives from it)
         $recipientAddress = New-Object MimeKit.MailboxAddress ('', $addr)
 
         $params = @{
@@ -498,10 +662,6 @@ zSji7zpenNgf/tgSGIN1aQfmCXIG5AbhZED5ez8Niphl3rvnzgA0kneSsAlaQNMCcCXzoOva7wIGp/24
             HTMLBody      = $html
         }
 
-        # Only attach if:
-        # - global switch -AttachHTML is set
-        # - a base attachment file exists
-        # - this recipient's XML has attach="true"
         if ($AttachHTML -and $baseAttachment -and $attachFromXml) {
             $params['AttachmentList'] = @($baseAttachment)
             Write-Host " -> Attaching HTML for recipient $addr"
