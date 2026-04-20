@@ -13,6 +13,8 @@ $emailFrom       = "noreply@kriminalvarden.se"
 $emailSubject    = "Aktiva datorer under Inaktiva"
 $smtpServer      = "smtp.kvv.se"
 $inactiveRootOU = "OU=Win11,OU=Inaktiva,OU=Datorer,OU=Kriminalvården,DC=kvv,DC=se"
+$logRoot        = Join-Path -Path $PSScriptRoot -ChildPath "Logs"
+$logFile        = Join-Path -Path $logRoot -ChildPath ("Aktiva_datorer_{0}.log" -f (Get-Date -Format "yyyyMMdd"))
 
 # Återflyttsmappning
 $returnMoveMap = @(
@@ -92,6 +94,23 @@ function Send-ResultMail {
         -SmtpServer $smtpServer `
         -ErrorAction Stop
 }
+
+function Write-Log {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [ValidateSet('INFO','WARN','ERROR')]
+        [string]$Level = 'INFO'
+    )
+
+    if (-not (Test-Path -Path $logRoot)) {
+        New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
+    }
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    "$timestamp [$Level] $Message" | Out-File -FilePath $logFile -Append -Encoding UTF8
+}
  
 # =========================================
 # Huvudlogik
@@ -104,6 +123,8 @@ $rootLevelResults = @()
 $failedResults    = @()
  
 try {
+    Write-Log -Message "Startar kontroll. Sökbas: $searchBase"
+
     # Validera OU:er
     Get-ADOrganizationalUnit -Identity $inactiveRootOU -ErrorAction Stop | Out-Null
  
@@ -121,6 +142,8 @@ try {
         -ErrorAction Stop |
         Where-Object { $_.LastLogonDate } |
         Sort-Object Name
+
+    Write-Log -Message ("Hittade {0} aktiva datorobjekt med LastLogonDate." -f @($enabledInactiveComputers).Count)
  
     foreach ($computer in $enabledInactiveComputers) {
         $parentOU = Get-ParentOUFromDN -DistinguishedName $computer.DistinguishedName
@@ -128,6 +151,7 @@ try {
  
         # Dator direkt under root-OU -> ingen automatisk återflytt
         if ($parentOU -ieq $inactiveRootOU) {
+            Write-Log -Message "Ingen automatisk återflytt (root-OU): $($computer.Name)" -Level 'WARN'
             $rootLevelResults += [pscustomobject]@{
                 Name           = $computer.Name
                 DNSHostName    = $computer.DNSHostName
@@ -145,6 +169,8 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($targetOU)) {
             try {
                 Move-ADObject -Identity $computer.DistinguishedName -TargetPath $targetOU -ErrorAction Stop
+
+                Write-Log -Message "Återflyttad: $($computer.Name) -> $targetOU"
  
                 $movedBackResults += [pscustomobject]@{
                     Name           = $computer.Name
@@ -157,6 +183,7 @@ try {
                 }
             }
             catch {
+                Write-Log -Message "Flytt misslyckades för $($computer.Name): $($_.Exception.Message)" -Level 'ERROR'
                 $failedResults += [pscustomobject]@{
                     Name           = $computer.Name
                     DNSHostName    = $computer.DNSHostName
@@ -172,6 +199,7 @@ try {
         }
  
         # Aktiva datorer i andra under-OU:er under Win11\Inaktiva
+        Write-Log -Message "Ingen mappning för återflytt: $($computer.Name)" -Level 'WARN'
         $rootLevelResults += [pscustomobject]@{
             Name           = $computer.Name
             DNSHostName    = $computer.DNSHostName
@@ -320,9 +348,13 @@ try {
 "@
  
     Send-ResultMail -BodyHtml $bodyHtml
+
+    Write-Log -Message ("Klar. Totalt: {0}, återflyttade: {1}, kontroll: {2}, fel: {3}." -f $totalFound, $movedBackCount, $rootLevelCount, $failedCount)
 }
 catch {
     $errorMessage = $_.Exception.Message
+
+    Write-Log -Message "Fel: $errorMessage" -Level 'ERROR'
  
     $bodyHtml = @"
 <!DOCTYPE html>
