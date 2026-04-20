@@ -1,28 +1,75 @@
-# Check if registry value exists
-$registryPath = "HKLM:\SOFTWARE\SCCMItems"
-$registryName = "OUpath"
+param(
+    [string]$RegistryPath = "HKLM:\SOFTWARE\SCCMItems",
+    [string]$RegistryName = "OUpath"
+)
 
-# Get the computer's current OU from AD for comparison
-$compName = $env:COMPUTERNAME
-$root = [ADSI]""
-$searcher = New-Object System.DirectoryServices.DirectorySearcher($root)
-$searcher.Filter = "(&(objectClass=computer)(cn=$compName))"
-$computer = $searcher.FindOne()
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
 
-if ($computer) {
-    $computerDN = $computer.Properties["distinguishedname"][0]
-    $ouPathFromAD = ($computerDN -split ',',2)[1]
-    
-    # Check registry
-    if (Test-Path $registryPath) {
-        $ouPathInRegistry = (Get-ItemProperty -Path $registryPath -Name $registryName -ErrorAction SilentlyContinue).$registryName
-        
-        if ($ouPathInRegistry -eq $ouPathFromAD) {
-            # Registry exists and is current
-            return $true
-        }
-    }
+function ConvertTo-LdapFilterSafe {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+
+    $safeValue = $Value
+    $safeValue = $safeValue -replace '\\', '\5c'
+    $safeValue = $safeValue -replace '\*', '\2a'
+    $safeValue = $safeValue -replace '\(', '\28'
+    $safeValue = $safeValue -replace '\)', '\29'
+    $safeValue = $safeValue -replace "`0", '\00'
+    return $safeValue
 }
 
-# Either registry doesn't exist or is out of date
-return $false
+$compliance = $false
+
+try {
+    $compName = $env:COMPUTERNAME
+    if ([string]::IsNullOrWhiteSpace($compName)) {
+        throw "Computer name was empty."
+    }
+
+    $safeCompName = ConvertTo-LdapFilterSafe -Value $compName
+    $root = [ADSI]""
+    $searcher = New-Object System.DirectoryServices.DirectorySearcher($root)
+    $searcher.Filter = "(&(objectClass=computer)(cn=$safeCompName))"
+    $computer = $searcher.FindOne()
+
+    if (-not $computer) {
+        Write-Output $compliance
+        exit 1
+    }
+
+    $dnValues = $computer.Properties["distinguishedname"]
+    if (-not $dnValues -or $dnValues.Count -eq 0) {
+        throw "distinguishedName was missing for computer '$compName'."
+    }
+
+    $computerDN = [string]$dnValues[0]
+    if ($computerDN -notmatch "^[^,]+,.+") {
+        throw "Invalid distinguishedName format: '$computerDN'."
+    }
+
+    $ouPathFromAD = ($computerDN -split ',', 2)[1]
+
+    if (-not (Test-Path -Path $RegistryPath)) {
+        Write-Output $compliance
+        exit 1
+    }
+
+    $regProperties = Get-ItemProperty -Path $RegistryPath -Name $RegistryName -ErrorAction Stop
+    $ouPathInRegistry = [string]$regProperties.$RegistryName
+
+    if ($ouPathInRegistry -eq $ouPathFromAD) {
+        $compliance = $true
+        Write-Output $compliance
+        exit 0
+    }
+
+    Write-Output $compliance
+    exit 1
+}
+catch {
+    Write-Output $compliance
+    exit 1
+}
