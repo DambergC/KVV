@@ -1,5 +1,5 @@
    <Configuration>
-     <SiteServer>vntsql0299</SiteServer>
+     <SiteServer>servername</SiteServer>
      <DPGroups>
        <Maintenance>Maintenance</Maintenance>
        <Production>VS DPs</Production>
@@ -17,16 +17,12 @@
        <From>no-reply@kvv.se</From>
        <SubjectPrefix>Kontroll av Distributionspunkter</SubjectPrefix>
        <Recipients>
-         <Recipient email="christian.damberg@kriminalvarden.se" />
-		 <Recipient email="magnus.jonsson6@kriminalvarden.se" />
-		 <Recipient email="Keiarash.Naderifarsani@kriminalvarden.se" />
-		 <Recipient email="it.andralinjen@kriminalvarden.se" />
-		 <Recipient email="HK.IT.CMKalendern@kriminalvarden.se" />
+         <Recipient email="dd@dd.se" />
         </Recipients>
      </Mail>
 
      <Report>
-       <CustomerName>Kriminalvården</CustomerName>
+       <CustomerName>Company</CustomerName>
      </Report>
 
      <Logging>
