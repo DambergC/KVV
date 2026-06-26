@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+
+  <ActiveDirectory>
+    <OUGUID>e546a0f0-2e94-4939-88e0-e602e197936d</OUGUID>
+  </ActiveDirectory>
+
+  <Database>
+    <SQLServer>servername</SQLServer>
+    <DatabaseName>ClientHealth</DatabaseName>
+  </Database>
+
+  <Mail>
+    <SMTP>smtpadress</SMTP>
+    <Port>25</Port>
+    <From>no-reply@adress</From>
+    <SubjectPrefix>Inaktiva datorer - Win11</SubjectPrefix>
+    <Recipients>
+      <Recipient email="dd@dd.se"/>
+    </Recipients>
+  </Mail>
+
+  <Report>
+    <CustomerName>Company - IT</CustomerName>
+    <HTMLfilePath>D:\Scripts\Get-InactiveComputersSCCM\OutFiles\</HTMLfilePath>
+    <LogFile>D:\Scripts\Get-InactiveComputersSCCM\LogFiles\InactiveComputers.log</LogFile>
+  </Report>
+
+  <General>
+    <DryRun>False</DryRun>
+  </General>
+
+</Configuration>
