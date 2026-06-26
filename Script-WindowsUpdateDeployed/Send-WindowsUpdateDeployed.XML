@@ -17,7 +17,7 @@
 		<DisableReportMonth Number=""/>
 	</DisableReportMonth>
 	<Recipients>
-		<Recipients email="christian.damberg@kriminalvarden.se"/>
+		<Recipients email="d@dd.se"/>
 	</Recipients>
 	<UpdateDeployed>
 		<LimitDays>-25</LimitDays>
@@ -28,9 +28,9 @@
 	<UpdateGroupName>Windows 11 Office Patch</UpdateGroupName>
   </UpdateGroups>
 	</UpdateDeployed>
-	<SiteServer>Vntapp0780</SiteServer>
-	<Mailfrom>no-reply@kvv.se</Mailfrom>
-	<MailSMTP>smtp.kvv.se</MailSMTP>
+	<SiteServer>servername</SiteServer>
+	<Mailfrom>no-reply@domain</Mailfrom>
+	<MailSMTP>smtp.domain</MailSMTP>
 	<MailPort>25</MailPort>
-	<MailCustomer>Kriminalvarden - IT</MailCustomer>
+	<MailCustomer>Company - IT</MailCustomer>
 </Configuration>
