@@ -3,11 +3,11 @@
   <HTMLfilePath>G:\Scripts\OutFiles\</HTMLfilePath>
 
   <!-- Global / default settings -->
-  <SQLServer>vntsql0299.kvv.se</SQLServer>
-  <Mailfrom>no-reply@kvv.se</Mailfrom>
-  <MailSMTP>smtp.kvv.se</MailSMTP>
+  <SQLServer>servername</SQLServer>
+  <Mailfrom>no-reply@domain</Mailfrom>
+  <MailSMTP>smtp.domain</MailSMTP>
   <MailPort>25</MailPort>
-  <MailCustomer>Kriminalvarden - IT</MailCustomer>
+  <MailCustomer>Company - IT</MailCustomer>
 
   <!-- Application-specific configuration -->
   <Applications>
@@ -20,9 +20,8 @@
     <CollectionId>KV10034F</CollectionId>
   </TargetCollections>
       <Recipients>
-      <Recipient email="Rikard.Blid1@kriminalvarden.se" attach="false" />
-      <Recipient email="Andreas.Fastland@kriminalvarden.se" attach="false" />
-        <Recipient email="christian.damberg@kriminalvarden.se" attach="false" />
+      <Recipient email="dd@dd.se" attach="false" />
+
        </Recipients>
     </Application>
 
@@ -33,7 +32,7 @@
 	    <TargetCollections>
   </TargetCollections>
       <Recipients>
-        <Recipient email="christian.damberg@kriminalvarden.se" attach="false" />
+        <Recipient email="dd@dd.se" attach="false" />
       </Recipients>
     </Application>
 
@@ -42,7 +41,7 @@
     <Application Name="Microsoft Office">
       <ProductFilter>Microsoft Office%</ProductFilter>
       <Recipients>
-        <Recipient email="christian.damberg@kriminalvarden.se" />
+        <Recipient email="dd@dd.se" />
       </Recipients>
     </Application> -->
   </Applications>
