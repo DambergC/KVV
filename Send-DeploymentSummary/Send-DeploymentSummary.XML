@@ -3,17 +3,17 @@
   <HTMLfilePath>D:\Scripts\Send-DeploymentSummary\OutFiles\</HTMLfilePath>
 
   <!-- Global / default settings -->
-  <SQLServer>vntsql0299.kvv.se</SQLServer>
-  <Mailfrom>no-reply@kvv.se</Mailfrom>
-  <MailSMTP>smtp.kvv.se</MailSMTP>
+  <SQLServer>servername</SQLServer>
+  <Mailfrom>no-reply@domain</Mailfrom>
+  <MailSMTP>smtp.domain</MailSMTP>
   <MailPort>25</MailPort>
-  <MailCustomer>Kriminalvarden - IT</MailCustomer>
+  <MailCustomer>Company - IT</MailCustomer>
 
   <!-- Application-specific configuration -->
   <Applications>
     
     <Application Name="Veckorapport - Deployments" SendDays="Fri" TargetType="Device">
-        <Recipient email="christian.damberg@kriminalvarden.se" attach="false" />
+        <Recipient email="dd@dd.se" attach="false" />
        </Recipients>
     </Application>
 
@@ -21,7 +21,7 @@
      
     <Application Name="Dagsrapport - Deployments" SendDays="Mon,Tue,Wed,Thu,Fri" TargetType="Device">
       <Recipients>
-        <Recipient email="christian.damberg@kriminalvarden.se" attach="false" />
+        <Recipient email="dd@£dd.se" attach="false" />
       </Recipients>
     </Application>
 
@@ -30,7 +30,7 @@
     <Application Name="Microsoft Office">
       <ProductFilter>Microsoft Office%</ProductFilter>
       <Recipients>
-        <Recipient email="christian.damberg@kriminalvarden.se" />
+        <Recipient email="dd@dd.se" />
       </Recipients>
     </Application> -->
   </Applications>
