@@ -32,7 +32,7 @@
   </Logging>
 
   <Email>
-    <SmtpServer>smtp.kvv.se</SmtpServer>
+    <SmtpServer>smtp.company.se</SmtpServer>
     <SmtpPort>25</SmtpPort>
     <From>noreply@company.se</From>
     <!-- Multiple recipients are supported -->
